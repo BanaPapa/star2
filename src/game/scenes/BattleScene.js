@@ -2,14 +2,17 @@ import Phaser from 'phaser'
 import { computeMovementRange, findPath, manhattanDistance } from '../../core/grid'
 import { resolveAttack } from '../../core/combat'
 import { pickTarget, inAttackRange, planApproach } from '../../core/ai'
-import { getUsableSkills, getFinisher, collectLineTargets } from '../../core/skills'
+import { collectLineTargets } from '../../core/skills'
+import { getEffectiveShip, applyEquipment, getUnitFinishers, xpRewardForVictory, canPromote } from '../../core/growth'
+import { buildEncounterPlacements } from '../../core/encounter'
+import { useFleetStore } from '../../state/useFleetStore'
 import { getTerrain } from '../systems/terrain'
 import { getEmojiFallback } from '../../core/assetMap'
 import CutinManager from '../effects/CutinManager'
 
 const COLS = 12
 const ROWS = 10
-const CELL = 64
+const CELL = 80
 
 // 지형 샘플 배치 (MOD-1 프로토타입 — 빈 공간/소행성/잔해 표시 확인용)
 const ASTEROID_CELLS = [
@@ -28,16 +31,22 @@ function buildTerrainLayout() {
   return layout
 }
 
-// 유닛 샘플 배치 — ships.json의 정찰함(MOV6)·전함(MOV2) 등 MOV 차이를 바로 비교할 수 있게 구성
-// MOD-4: aces.json의 affinity(탑승 가능 함선)와 정확히 일치하는 조합으로 에이스 2명을 배정한다
-//   (카이→전투기, 세라→순양함). 밀라(공모 전용)·레이븐(영입이 missable로 명시된 스토리 한정 캐릭터)은
-//   현재 로스터에 대응 함선이 없거나 임의 배정이 데이터 의도와 어긋나므로 제외 — 보고서에 그대로 공개한다.
-const UNIT_PLACEMENTS = [
-  { side: 'ally', shipId: 'scout', x: 1, y: 5 },
-  { side: 'ally', shipId: 'fighter', x: 1, y: 7, aceId: 'kai' },
-  { side: 'ally', shipId: 'cruiser', x: 1, y: 3, aceId: 'sera' },
-  { side: 'enemy', shipId: 'battleship', x: 10, y: 5 },
-  { side: 'enemy', shipId: 'fighter', x: 10, y: 3 },
+// 아군 시작 위치 — useFleetStore의 로스터 순서에 그대로 매핑된다(MOD-5: 로스터 기반 생성으로 교체).
+const ALLY_START_POSITIONS = [
+  { x: 1, y: 5 },
+  { x: 1, y: 7 },
+  { x: 1, y: 3 },
+]
+
+// 적 출현 위치 슬롯 — core/encounter.js가 노드의 적 구성을 이 자리에 순서대로 배치한다(MOD-6).
+// 가장 큰 편성(관문 요새 s7: 4기)도 겹치지 않도록 충분히 마련.
+const ENEMY_SPAWN_POSITIONS = [
+  { x: 10, y: 2 },
+  { x: 10, y: 7 },
+  { x: 9, y: 4 },
+  { x: 9, y: 5 },
+  { x: 11, y: 3 },
+  { x: 11, y: 6 },
 ]
 
 const SIDE_COLOR = {
@@ -78,11 +87,23 @@ export default class BattleScene extends Phaser.Scene {
     super('BattleScene')
   }
 
-  init({ ships, combatRules, skills, aces }) {
+  init({ ships, combatRules, skills, aces, enemies, items, node, onVictory, onExit }) {
+    // this.scene.restart()에 그대로 재전달하기 위해 보관(MOD-6: 노드·콜백도 함께 — "같은 전투 다시 시작"에 필요)
+    this.initArgs = { ships, combatRules, skills, aces, enemies, items, node, onVictory, onExit }
     this.shipsById = new Map(ships.map((s) => [s.id, s]))
     this.combatRules = combatRules
     this.allSkills = skills
     this.acesById = new Map(aces.map((a) => [a.id, a]))
+    this.enemiesById = new Map((enemies?.enemies ?? []).map((e) => [e.id, e]))
+    this.bossesById = new Map((enemies?.bosses ?? []).map((b) => [b.id, b]))
+    // MOD-7: 장착 장비(weapons/modules/...)를 id로 한번에 조회하기 위한 맵 — 카테고리 무관하게 합친다.
+    this.itemsById = new Map(
+      ['weapons', 'modules', 'consumables', 'uniques'].flatMap((cat) => items?.[cat] ?? []).map((item) => [item.id, item]),
+    )
+    // MOD-6: 어느 노드(systems.json)의 전투인지 — 적 구성을 결정하고, 결과를 정복 상태로 돌려줄 때 쓰인다.
+    this.node = node ?? null
+    this.onVictory = onVictory ?? null
+    this.onExit = onExit ?? null
     this.terrain = buildTerrainLayout()
     this.units = []
     this.selected = null
@@ -90,8 +111,15 @@ export default class BattleScene extends Phaser.Scene {
     this.busy = false // 이동/공격/적 행동 애니메이션 동안 입력 잠금
     this.turnNumber = 1
     this.phase = 'player' // 'player' | 'enemy'
-    this.pendingAbility = null // { unit, skill } — 필살기 조준 대기 상태
+    this.pendingAbility = null // { unit, skill, presenter } — 필살기 조준 대기 상태
     this.cutinEnabled = true // 토글 off 시 컷인 연출을 건너뛰고 효과만 즉시 적용 (DoD: "토글 off 시 빠른 진행")
+    this.autoBattle = false // ON 시 플레이어 페이즈에서 아군도 적 AI와 동일한 휴리스틱으로 자동 행동(테스트 편의용 QoL)
+
+    // MOD-5: 아군은 useFleetStore의 로스터(레벨·성장치·전직 여부 보유)를 그대로 가져와 생성한다 —
+    // 전투 사이에도 성장이 영구 보존되며, 승리 시 이 스토어에 XP를 돌려준다.
+    this.roster = useFleetStore.getState().roster
+    this.battleEnded = false
+    this.defeatedEnemyShips = [] // 격파한 적의 베이스 함선 데이터 — 승리 보상 XP 계산에 사용
   }
 
   create() {
@@ -105,7 +133,19 @@ export default class BattleScene extends Phaser.Scene {
       this.cellRects.push(row)
     }
 
-    UNIT_PLACEMENTS.forEach((placement) => this.spawnUnit(placement))
+    const allyPlacements = this.roster.map((entry, index) => {
+      const pos = ALLY_START_POSITIONS[index % ALLY_START_POSITIONS.length]
+      return { side: 'ally', instanceId: entry.instanceId, shipId: entry.shipId, aceId: entry.aceId, x: pos.x, y: pos.y }
+    })
+    // MOD-6: 적 구성은 더 이상 하드코딩이 아니라, 진입한 노드(systems.json)의 enemy/miniboss/boss를
+    // enemies.json·ships.json과 합성한 결과 그대로다(core/encounter.js).
+    const enemyPlacements = buildEncounterPlacements(this.node, {
+      enemiesById: this.enemiesById,
+      bossesById: this.bossesById,
+      shipsById: this.shipsById,
+      positions: ENEMY_SPAWN_POSITIONS,
+    })
+    ;[...allyPlacements, ...enemyPlacements].forEach((placement) => this.spawnUnit(placement))
 
     this.hudText = this.add.text(16, 12, '', {
       fontFamily: 'Share Tech Mono, monospace',
@@ -129,10 +169,30 @@ export default class BattleScene extends Phaser.Scene {
     })
     this.refreshCutinToggleLabel()
 
+    this.autoBattleToggleText = this.add
+      .text(this.scale.width - 16, 54, '', {
+        fontFamily: 'Share Tech Mono, monospace',
+        fontSize: '13px',
+        color: TOGGLE_COLOR,
+      })
+      .setOrigin(1, 0)
+      .setInteractive({ useHandCursor: true })
+    this.autoBattleToggleText.on('pointerdown', (_pointer, _lx, _ly, event) => {
+      event?.stopPropagation()
+      this.autoBattle = !this.autoBattle
+      this.refreshAutoBattleToggleLabel()
+      if (this.autoBattle && this.phase === 'player' && !this.busy && !this.battleEnded) {
+        this.pendingAbility = null
+        this.clearSelection()
+        this.time.delayedCall(ENEMY_ACTION_DELAY, () => this.runAllyAutoTurn(0))
+      }
+    })
+    this.refreshAutoBattleToggleLabel()
+
     this.cutinManager = new CutinManager(this)
 
     this.input.keyboard.on('keydown-SPACE', () => {
-      if (this.phase !== 'player' || this.busy) return
+      if (this.phase !== 'player' || this.busy || this.battleEnded) return
       this.endPlayerPhase()
     })
 
@@ -144,6 +204,14 @@ export default class BattleScene extends Phaser.Scene {
       this.cutinEnabled
         ? '🎬 컷인 연출 ON (클릭 시 끄기)'
         : '⏩ 컷인 연출 OFF — 결과만 즉시 적용 (클릭 시 켜기)',
+    )
+  }
+
+  refreshAutoBattleToggleLabel() {
+    this.autoBattleToggleText.setText(
+      this.autoBattle
+        ? '🤖 자동전투 ON — 아군이 자동으로 행동 (클릭 시 끄기)'
+        : '🕹️ 자동전투 OFF — 직접 조작 (클릭 시 켜기)',
     )
   }
 
@@ -167,27 +235,36 @@ export default class BattleScene extends Phaser.Scene {
     rect.on('pointerdown', () => this.handleCellClick(x, y))
 
     if (terrain.glyph) {
-      this.add.text(px, py, terrain.glyph, { fontSize: '22px' }).setOrigin(0.5).setAlpha(0.85)
+      this.add.text(px, py, terrain.glyph, { fontSize: '28px' }).setOrigin(0.5).setAlpha(0.85)
     }
     return rect
   }
 
   // ----- 유닛 -----
   spawnUnit(placement) {
-    const ship = this.shipsById.get(placement.shipId)
-    if (!ship) return
+    // 아군은 ships.json에서 shipId로 조회하지만, 적은 core/encounter.js가 enemies.json+ships.json을
+    // 합성해 만든 ship 객체를 placement.ship으로 직접 들고 온다(MOD-6: ships.json에 없는 적 함선).
+    const baseShip = placement.ship ?? this.shipsById.get(placement.shipId)
+    if (!baseShip) return
 
     const palette = SIDE_COLOR[placement.side]
     const { px, py } = this.cellToWorld(placement.x, placement.y)
     const radius = CELL * 0.36
 
     const ace = placement.aceId ? this.acesById.get(placement.aceId) ?? null : null
-    const finisher = ace ? getFinisher(ace, this.allSkills) : null
+    // MOD-5: 아군(instanceId 보유)은 로스터 성장치·전직 보너스를 합성한 "현재 실전 스탯"으로 생성하고,
+    // 에이스 필살기 + 전직 함선 고유 필살기를 함께(복수) 보유할 수 있다. 적은 베이스 스탯 그대로.
+    const entry = placement.instanceId ? (this.roster.find((e) => e.instanceId === placement.instanceId) ?? null) : null
+    // MOD-7: 성장·전직 보너스 위에 장착 무기·모듈(items.json mods)을 추가로 합산한 "최종 실전 스탯".
+    const ship = entry ? applyEquipment(getEffectiveShip(baseShip, entry), entry, this.itemsById) : baseShip
+    const finishers = entry ? getUnitFinishers({ ace, ship: baseShip, entry, allSkills: this.allSkills }) : []
 
     const ring = this.add.circle(0, 0, radius, palette.fill)
     ring.setStrokeStyle(2, palette.ring, 0.9)
-    const glyph = this.add.text(0, -4, getEmojiFallback(ship.sprite), { fontSize: '22px' }).setOrigin(0.5)
-    const labelText = ace ? `${ship.name} MOV${ship.mov} · 지휘관 ${ace.name}` : `${ship.name} MOV${ship.mov}`
+    const glyph = this.add.text(0, -4, getEmojiFallback(ship.sprite), { fontSize: '28px' }).setOrigin(0.5)
+    const levelPart = entry ? ` Lv.${ship.level}` : ''
+    const acePart = ace ? ` · 지휘관 ${ace.name}` : ''
+    const labelText = `${ship.name}${levelPart} MOV${ship.mov}${acePart}`
     const label = this.add
       .text(0, radius + 8, labelText, {
         fontFamily: 'Share Tech Mono, monospace',
@@ -214,6 +291,8 @@ export default class BattleScene extends Phaser.Scene {
     const unit = {
       side: placement.side,
       ship,
+      baseShip,
+      instanceId: placement.instanceId ?? null,
       gridX: placement.x,
       gridY: placement.y,
       hp: ship.hp,
@@ -225,7 +304,7 @@ export default class BattleScene extends Phaser.Scene {
       shield: 0,
       apDebuff: 0,
       ace,
-      finisher,
+      finishers,
       container,
       ring,
       hpBarFg,
@@ -243,7 +322,7 @@ export default class BattleScene extends Phaser.Scene {
 
   // ----- 입력 처리 -----
   handleUnitClick(unit) {
-    if (this.busy || this.phase !== 'player') return
+    if (this.busy || this.phase !== 'player' || this.battleEnded || this.autoBattle) return
 
     if (unit.side !== 'ally') {
       this.handleEnemyClick(unit)
@@ -272,11 +351,11 @@ export default class BattleScene extends Phaser.Scene {
 
   handleEnemyClick(enemy) {
     if (this.pendingAbility) {
-      const { unit, skill } = this.pendingAbility
+      const { unit, skill, presenter } = this.pendingAbility
       if (skill.target === 'single') {
-        this.launchFinisher(unit, skill, [enemy])
+        this.launchFinisher(unit, skill, [enemy], presenter)
       } else if (skill.target === 'line') {
-        this.tryFireLine(unit, skill, { x: enemy.gridX, y: enemy.gridY })
+        this.tryFireLine(unit, skill, { x: enemy.gridX, y: enemy.gridY }, presenter)
       }
       return
     }
@@ -303,11 +382,11 @@ export default class BattleScene extends Phaser.Scene {
   }
 
   handleCellClick(x, y) {
-    if (this.busy || this.phase !== 'player') return
+    if (this.busy || this.phase !== 'player' || this.battleEnded || this.autoBattle) return
 
     if (this.pendingAbility) {
-      const { unit, skill } = this.pendingAbility
-      if (skill.target === 'line') this.tryFireLine(unit, skill, { x, y })
+      const { unit, skill, presenter } = this.pendingAbility
+      if (skill.target === 'line') this.tryFireLine(unit, skill, { x, y }, presenter)
       return
     }
 
@@ -381,38 +460,44 @@ export default class BattleScene extends Phaser.Scene {
     this.actionChips = []
 
     const unit = this.selected
-    if (!unit || unit.side !== 'ally' || !unit.finisher) return
+    if (!unit || unit.side !== 'ally' || !unit.finishers?.length) return
 
-    const skill = unit.finisher
     const ready = unit.tp >= TP_MAX
-    const label = ready
-      ? `✨ [${unit.ace.name}] 필살기 "${skill.name}" 발동 가능! — 클릭해서 사용`
-      : `${unit.ace.name}의 필살기 "${skill.name}" — TP ${Math.round((unit.tp / TP_MAX) * 100)}% (가득 차면 발동)`
+    unit.finishers.forEach((finisherEntry, index) => {
+      const { skill, presenterName } = finisherEntry
+      const label = ready
+        ? `✨ [${presenterName}] 필살기 "${skill.name}" 발동 가능! — 클릭해서 사용`
+        : `${presenterName}의 필살기 "${skill.name}" — TP ${Math.round((unit.tp / TP_MAX) * 100)}% (가득 차면 발동)`
 
-    const chip = this.add
-      .text(16, 34, label, {
-        fontFamily: 'Share Tech Mono, monospace',
-        fontSize: '13px',
-        fontStyle: ready ? 'bold' : 'normal',
-        color: ready ? FINISHER_READY_COLOR : FINISHER_WAIT_COLOR,
-      })
-      .setDepth(5)
+      const chip = this.add
+        .text(16, 34 + index * 19, label, {
+          fontFamily: 'Share Tech Mono, monospace',
+          fontSize: '13px',
+          fontStyle: ready ? 'bold' : 'normal',
+          color: ready ? FINISHER_READY_COLOR : FINISHER_WAIT_COLOR,
+        })
+        .setDepth(5)
 
-    if (ready) {
-      chip.setInteractive({ useHandCursor: true })
-      chip.on('pointerdown', (_pointer, _lx, _ly, event) => {
-        event?.stopPropagation()
-        this.beginFinisherTargeting(unit)
-      })
-      this.tweens.add({ targets: chip, alpha: 0.4, duration: 480, yoyo: true, repeat: -1 })
-    }
+      if (ready) {
+        chip.setInteractive({ useHandCursor: true })
+        chip.on('pointerdown', (_pointer, _lx, _ly, event) => {
+          event?.stopPropagation()
+          this.beginFinisherTargeting(unit, finisherEntry)
+        })
+        this.tweens.add({ targets: chip, alpha: 0.4, duration: 480, yoyo: true, repeat: -1 })
+      }
 
-    this.actionChips.push(chip)
+      this.actionChips.push(chip)
+    })
   }
 
   // ----- 필살기 조준/발동 -----
-  beginFinisherTargeting(unit) {
-    const skill = unit.finisher
+  // finisherEntry: core/growth.js의 getUnitFinishers가 반환하는 { skill, source, presenterName, presenterPortrait }.
+  // presenter(이름·포트레이트)는 컷인에서 "누구의 필살기인지" 보여주는 데 쓰인다 — 에이스 필살기는 에이스,
+  // 전직 함선 고유 필살기는 그 함선 자신이 컷인의 주인공이 된다(에이스가 없는 유닛도 자기 필살기를 쓸 수 있다).
+  beginFinisherTargeting(unit, finisherEntry) {
+    const { skill, presenterName, presenterPortrait } = finisherEntry
+    const presenter = { name: presenterName, portrait: presenterPortrait }
 
     // 광역(아군/적 전체)은 대상 선택 없이 즉시 발동
     if (skill.target === 'aoe_ally' || skill.target === 'aoe_enemy') {
@@ -420,11 +505,11 @@ export default class BattleScene extends Phaser.Scene {
         skill.target === 'aoe_ally'
           ? this.units.filter((u) => u.side === unit.side)
           : this.units.filter((u) => u.side !== unit.side)
-      this.launchFinisher(unit, skill, targets)
+      this.launchFinisher(unit, skill, targets, presenter)
       return
     }
 
-    this.pendingAbility = { unit, skill }
+    this.pendingAbility = { unit, skill, presenter }
     this.actionChips?.forEach((chip) => chip.destroy())
     this.actionChips = []
     this.clearHighlights()
@@ -432,11 +517,11 @@ export default class BattleScene extends Phaser.Scene {
     if (skill.target === 'line') {
       this.highlightLineAimCells(unit)
       this.refreshHud(
-        `${unit.ace.name} — "${skill.name}" 조준 중! 직선 방향(상하좌우)의 칸이나 그 위의 적을 클릭해 발사하세요. (취소: 유닛을 다시 클릭)`,
+        `${presenter.name} — "${skill.name}" 조준 중! 직선 방향(상하좌우)의 칸이나 그 위의 적을 클릭해 발사하세요. (취소: 유닛을 다시 클릭)`,
       )
     } else {
       this.refreshHud(
-        `${unit.ace.name} — "${skill.name}" 조준 중! 사거리와 무관하게 대상 적 유닛을 클릭하세요. (취소: 유닛을 다시 클릭)`,
+        `${presenter.name} — "${skill.name}" 조준 중! 사거리와 무관하게 대상 적 유닛을 클릭하세요. (취소: 유닛을 다시 클릭)`,
       )
     }
   }
@@ -468,7 +553,7 @@ export default class BattleScene extends Phaser.Scene {
     }
   }
 
-  tryFireLine(unit, skill, aimCell) {
+  tryFireLine(unit, skill, aimCell, presenter) {
     if (!this.highlighted.has(`${aimCell.x},${aimCell.y}`)) {
       this.cancelPendingAbility()
       return
@@ -476,26 +561,26 @@ export default class BattleScene extends Phaser.Scene {
     const targets = collectLineTargets(unit, aimCell, this.units, { cols: COLS, rows: ROWS })
     if (targets.length === 0) {
       this.refreshHud(
-        `${unit.ace.name} — 그 방향에는 적이 없습니다. 다른 방향의 칸을 클릭하거나, 유닛을 다시 클릭해 취소하세요.`,
+        `${presenter.name} — 그 방향에는 적이 없습니다. 다른 방향의 칸을 클릭하거나, 유닛을 다시 클릭해 취소하세요.`,
       )
       return
     }
-    this.launchFinisher(unit, skill, targets)
+    this.launchFinisher(unit, skill, targets, presenter)
   }
 
   // 컷인 연출(ON일 때) → onApply 시점에 실제 효과 적용 → 복귀까지 끝나면 입력 잠금 해제.
   // dev_plan_guide.md 요청 예시 그대로: TP는 사용 즉시 0으로 초기화한다(전액 소모, cost.tp:"full").
-  launchFinisher(unit, skill, targets) {
+  // presenter: { name, portrait } — 컷인에 등장하는 주체(에이스 또는 전직한 함선 자신).
+  launchFinisher(unit, skill, targets, presenter) {
     this.pendingAbility = null
     this.clearSelection()
     this.busy = true
 
-    const ace = unit.ace
     unit.tp = 0
     this.refreshUnitStatusLabel(unit)
 
     this.cutinManager.play({
-      ace,
+      ace: presenter,
       skill,
       onApply: () => this.applyFinisherEffect(unit, skill, targets),
       onComplete: () => {
@@ -720,6 +805,131 @@ export default class BattleScene extends Phaser.Scene {
     unit.container.destroy()
     this.units = this.units.filter((u) => u !== unit)
     if (this.selected === unit) this.selected = null
+    if (unit.side === 'enemy') this.defeatedEnemyShips.push(unit.baseShip)
+    this.checkBattleEnd()
+  }
+
+  // ----- 전투 종료 판정 & 보상 (MOD-5: "전투 승리 시 XP 분배"의 출발점) -----
+  // 한쪽 진영이 전멸하면 즉시 종료 처리 — 이후 입력은 battleEnded 가드로 모두 막는다.
+  checkBattleEnd() {
+    if (this.battleEnded) return
+    const enemiesLeft = this.units.some((u) => u.side === 'enemy')
+    const alliesLeft = this.units.some((u) => u.side === 'ally')
+    if (enemiesLeft && alliesLeft) return
+
+    this.battleEnded = true
+    this.busy = true
+    this.clearSelection()
+    this.actionChips?.forEach((chip) => chip.destroy())
+    this.actionChips = []
+
+    if (!enemiesLeft) this.handleVictory()
+    else this.handleDefeat()
+  }
+
+  // 격파한 적의 베이스 스탯에서 보상 XP를 계산해(core/growth.xpRewardForVictory) 생존 아군 전원에게
+  // useFleetStore.gainXp로 지급한다 — 레벨업·전직 가능 여부까지 한 번에 확인해 결과를 보여준다.
+  // MOD-6: 노드 진입 전투라면 onVictory(node)를 호출해 정복 상태를 즉시 갱신한다(인접 다음 노드 잠금 해제).
+  handleVictory() {
+    const totalXp = xpRewardForVictory(this.defeatedEnemyShips)
+    const survivors = this.units.filter((u) => u.side === 'ally' && u.instanceId)
+
+    const lines = survivors.map((unit) => {
+      const result = useFleetStore.getState().gainXp(unit.instanceId, totalXp)
+      if (!result) return `${unit.ship.name}: 보상을 받지 못했습니다.`
+
+      const updatedEntry = useFleetStore.getState().roster.find((e) => e.instanceId === unit.instanceId)
+      const levelPart = result.levelsGained > 0 ? ` → Lv.${result.level} 달성!` : ` (Lv.${result.level})`
+      const promotionHint = updatedEntry && canPromote(unit.baseShip, updatedEntry) ? ' ✨ 전직 조건 달성! 함대 편성에서 전직하세요.' : ''
+      return `${unit.ship.baseName ?? unit.ship.name} +${totalXp} XP${levelPart}${promotionHint}`
+    })
+
+    if (this.node) this.onVictory?.(this.node)
+
+    const headline = this.node
+      ? [`"${this.node.name}" 정복! 인접한 다음 별계로 가는 길이 열렸습니다.`]
+      : []
+
+    this.showBattleEndBanner(
+      '🏆 승리!',
+      [
+        ...headline,
+        `격파한 적 함선 ${this.defeatedEnemyShips.length}척 — 보상 XP ${totalXp} (모든 생존 함선에게 동일 지급)`,
+        ...lines,
+      ],
+      this.buildEndActions(),
+    )
+  }
+
+  handleDefeat() {
+    this.showBattleEndBanner(
+      '💥 패배...',
+      [
+        '함대가 전멸했습니다 — 보상 없이 전투가 종료됩니다(정복 상태는 변하지 않습니다).',
+        '다시 시작해 재도전하거나, 맵으로 돌아가 편성을 가다듬으세요(성장치는 그대로 유지됩니다).',
+      ],
+      this.buildEndActions(),
+    )
+  }
+
+  // 전투 종료 후 선택지 — "맵으로 복귀"는 노드 기반 전투(MOD-6)일 때만 보여준다(자유 전투 호환).
+  buildEndActions() {
+    const actions = [{ label: '🔁 같은 전투 다시 시작 (함대 성장은 유지됩니다)', onClick: () => this.scene.restart(this.initArgs) }]
+    if (this.node && this.onExit) {
+      actions.unshift({ label: '🌌 성단 맵으로 복귀', onClick: () => this.onExit() })
+    }
+    return actions
+  }
+
+  // 풀스크린 결과 배너 + 선택지 버튼들(위에서부터 쌓임). MOD-6: 맵 복귀/재도전 중 골라 다음 행동을 잇는다.
+  showBattleEndBanner(title, lines, actions) {
+    const { width, height } = this.scale
+    const cx = width / 2
+    const cy = height / 2
+
+    const dim = this.add.rectangle(cx, cy, width, height, 0x05060f, 0.8).setDepth(300)
+    const titleText = this.add
+      .text(cx, cy - 130, title, {
+        fontFamily: 'Share Tech Mono, monospace',
+        fontSize: '32px',
+        fontStyle: 'bold',
+        color: '#ffd166',
+      })
+      .setOrigin(0.5)
+      .setDepth(301)
+    const bodyText = this.add
+      .text(cx, cy - 80, lines.join('\n'), {
+        fontFamily: 'Share Tech Mono, monospace',
+        fontSize: '14px',
+        color: '#cdd8f4',
+        align: 'center',
+        lineSpacing: 8,
+      })
+      .setOrigin(0.5, 0)
+      .setDepth(301)
+
+    const buttonColors = ['#ffd166', '#3ad6c4']
+    const buttons = actions.map((action, index) => {
+      const btn = this.add
+        .text(cx, cy + 150 + index * 36, action.label, {
+          fontFamily: 'Share Tech Mono, monospace',
+          fontSize: '15px',
+          fontStyle: 'bold',
+          color: buttonColors[index % buttonColors.length],
+        })
+        .setOrigin(0.5)
+        .setDepth(301)
+        .setInteractive({ useHandCursor: true })
+
+      btn.on('pointerdown', (_pointer, _lx, _ly, event) => {
+        event?.stopPropagation()
+        action.onClick()
+      })
+      this.tweens.add({ targets: btn, alpha: 0.4, duration: 480, yoyo: true, repeat: -1 })
+      return btn
+    })
+
+    this.battleEndLayer = [dim, titleText, bodyText, ...buttons]
   }
 
   // ----- AP/TP -----
@@ -764,10 +974,13 @@ export default class BattleScene extends Phaser.Scene {
   // ----- 턴 순환: 플레이어 페이즈 ↔ 적 페이즈 -----
   startPlayerPhase() {
     this.phase = 'player'
-    for (const unit of this.units) {
-      if (unit.side === 'ally') this.refillAp(unit)
-    }
+    this.allyQueue = this.units.filter((u) => u.side === 'ally')
+    for (const unit of this.allyQueue) this.refillAp(unit)
     this.refreshHud()
+
+    if (this.autoBattle && !this.battleEnded) {
+      this.time.delayedCall(ENEMY_ACTION_DELAY, () => this.runAllyAutoTurn(0))
+    }
   }
 
   endPlayerPhase() {
@@ -797,6 +1010,7 @@ export default class BattleScene extends Phaser.Scene {
 
   // ----- 기본 적 AI: '가장 약하거나 상성상 유리한 적에게 이동 후 공격' (core/ai.js 휴리스틱 사용) -----
   runEnemyUnit(index) {
+    if (this.battleEnded) return // 적 턴 도중 아군이 전멸(패배)하면 큐 진행을 멈춘다 — 페이즈 전환 방지
     if (index >= this.enemyQueue.length) {
       this.endEnemyPhase()
       return
@@ -858,7 +1072,8 @@ export default class BattleScene extends Phaser.Scene {
     }
 
     this.busy = true
-    this.refreshHud(`${unit.ship.name}(적) 이동 중...`)
+    const sideLabel = unit.side === 'ally' ? '(자동)' : '(적)'
+    this.refreshHud(`${unit.ship.name}${sideLabel} 이동 중...`)
     this.animateUnitAlongPath(unit, path, () => {
       unit.gridX = targetX
       unit.gridY = targetY
@@ -866,6 +1081,56 @@ export default class BattleScene extends Phaser.Scene {
       this.busy = false
       onDone()
     })
+  }
+
+  // ----- 자동전투: 적 AI와 동일한 휴리스틱(core/ai.js)을 아군에게 그대로 적용 (테스트 편의용 QoL) -----
+  runAllyAutoTurn(index) {
+    if (this.battleEnded || !this.autoBattle || this.phase !== 'player') return
+    if (index >= this.allyQueue.length) {
+      this.endPlayerPhase()
+      return
+    }
+    const unit = this.allyQueue[index]
+    if (!this.units.includes(unit)) {
+      this.runAllyAutoTurn(index + 1)
+      return
+    }
+    this.takeAllyAutoTurn(unit, () => {
+      this.time.delayedCall(ENEMY_ACTION_DELAY, () => {
+        if (!this.autoBattle || this.battleEnded || this.phase !== 'player') return
+        this.refreshHud(`자동전투 — 아군이 행동합니다... (턴 ${this.turnNumber})`)
+        this.runAllyAutoTurn(index + 1)
+      })
+    })
+  }
+
+  takeAllyAutoTurn(unit, onDone) {
+    const step = () => {
+      if (unit.ap <= 0 || !this.units.includes(unit) || this.battleEnded || !this.autoBattle) {
+        onDone()
+        return
+      }
+      const enemies = this.units.filter((u) => u.side === 'enemy')
+      const target = pickTarget(unit.ship.id, enemies, this.combatRules.counterMultiplier)
+      if (!target) {
+        onDone()
+        return
+      }
+
+      if (inAttackRange(unit, target)) {
+        this.busy = true
+        this.resolveCombat(unit, target, step)
+        return
+      }
+
+      const move = planApproach(unit, target, (x, y) => this.isPassable(x, y, unit))
+      if (move.x === unit.gridX && move.y === unit.gridY) {
+        onDone()
+        return
+      }
+      this.aiMoveTo(unit, move.x, move.y, step)
+    }
+    step()
   }
 
   // ----- HUD -----

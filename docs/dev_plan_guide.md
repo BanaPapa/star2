@@ -96,6 +96,12 @@ M6: MOD-11 보스전·엔딩 → MOD-12 저장/로드·설정 → MOD-13 UI셸·
 - **DoD:** 유닛 선택→이동범위 표시→이동 동작. 지형 타일 구분 표시.
 - **테스트:** 정찰함(MOV6)과 전함(MOV2)의 이동범위가 데이터대로 다른지.
 - **완성도:** 🟡
+- **추가 노트 (2026-06-09, QoL — 모듈 순서 외):** PC 모니터 기준 전투 화면이 작다는 피드백으로 캔버스를
+  960×680 → 1200×850, 그리드 셀 `CELL` 64→80으로 확대. `BattleScreen.jsx`의 `WIDTH`/`HEIGHT`와
+  `BattleScene.js`의 `CELL` 상수, 그리고 글리프 폰트 크기(터레인·유닛 22px→28px) 정도만 손대면
+  반지름·HP바 등 `CELL`에서 비례 파생되는 값들은 자동으로 함께 커진다. 전략맵·함대편성·정비허브
+  화면의 `max-width`도 함께 늘려 더 넓은 모니터에 맞췄다(`StrategyMapScreen.css`/`FleetScreen.css`/
+  `MaintenanceHubScreen.css`/`App.css`).
 
 ---
 
@@ -118,6 +124,12 @@ M6: MOD-11 보스전·엔딩 → MOD-12 저장/로드·설정 → MOD-13 UI셸·
 - **DoD:** 플레이어 턴↔적 턴 순환, AP 소진 시 행동 불가, 적이 합리적으로 움직임.
 - **테스트:** 적이 정찰함 대신 약한 표적을 노리는지, TP가 턴마다 차는지.
 - **완성도:** 🟡 (AI는 프로토 수준이어도 됨, 후에 고도화)
+- **추가 노트 (2026-06-09, QoL — 모듈 순서 외):** 테스트 중 매 전투를 일일이 손으로 진행하기 번거로워
+  '🤖 자동전투' 토글을 HUD 우상단(컷인 토글 바로 아래)에 추가했다. ON 시 플레이어 페이즈에서도
+  적 AI와 동일한 `core/ai.js` 휴리스틱(`pickTarget`/`inAttackRange`/`planApproach`)으로 아군이
+  자동으로 이동·공격하며, `runAllyAutoTurn`/`takeAllyAutoTurn`이 기존 `runEnemyUnit`/`takeEnemyTurn`
+  큐 순회 패턴을 그대로 미러링한다. ON 상태에서는 `handleUnitClick`/`handleCellClick`을 잠가
+  수동 입력과 충돌하지 않게 했다. 정식 기획 요소가 아니라 QA/밸런스 확인용 보조 기능이다.
 
 ---
 

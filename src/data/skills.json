@@ -11,6 +11,12 @@
     { "id": "stellar_snipe",  "name": "성흔 저격", "type": "finisher", "cost": { "tp": "full" }, "target": "single",    "effect": { "damageMultiplier": 3.0, "ignoreRange": true }, "owner": "sera", "cutin": "cutin_sera_01",  "desc": "사거리 무시 초고대미지 단일" },
     { "id": "aegis_veil",     "name": "수호 장막", "type": "finisher", "cost": { "tp": "full" }, "target": "aoe_ally",  "effect": { "shield": 60, "heal": 30 }, "owner": "mila", "cutin": "cutin_mila_01",  "desc": "광역 아군 실드 + 회복" },
     { "id": "shadow_strike",  "name": "그림자 일격", "type": "finisher", "cost": { "tp": "full" }, "target": "single",   "effect": { "damageMultiplier": 2.5, "unavoidable": true }, "owner": "raven", "cutin": "cutin_raven_01", "desc": "회피불가 확정 대미지" },
-    { "id": "area_emp",       "name": "광역 EMP",  "type": "finisher", "cost": { "tp": "full" }, "target": "aoe_enemy", "effect": { "damageMultiplier": 1.2, "apDebuff": 1, "duration": 1 }, "owner": "any", "cutin": "cutin_emp_01", "desc": "광역 대미지 + 다음 턴 적 행동 -1AP" }
+    { "id": "area_emp",       "name": "광역 EMP",  "type": "finisher", "cost": { "tp": "full" }, "target": "aoe_enemy", "effect": { "damageMultiplier": 1.2, "apDebuff": 1, "duration": 1 }, "owner": "any", "cutin": "cutin_emp_01", "desc": "광역 대미지 + 다음 턴 적 행동 -1AP" },
+
+    { "id": "phantom_lance",   "name": "환영의 일격",     "type": "finisher", "cost": { "tp": "full" }, "target": "single",    "effect": { "damageMultiplier": 2.4, "unavoidable": true }, "owner": "class:scout",      "cutin": "cutin_disruptor_01",     "desc": "전직(교란기) 고유 — 환영처럼 파고드는 회피불가 일격" },
+    { "id": "berserker_charge","name": "광폭 돌격",      "type": "finisher", "cost": { "tp": "full" }, "target": "single",    "effect": { "damageMultiplier": 2.6 },                       "owner": "class:fighter",    "cutin": "cutin_vanguard_01",      "desc": "전직(돌격기) 고유 — 적진을 부수는 초고화력 돌격" },
+    { "id": "orbital_barrage", "name": "궤도 폭격",      "type": "finisher", "cost": { "tp": "full" }, "target": "aoe_enemy", "effect": { "damageMultiplier": 1.5 },                       "owner": "class:cruiser",    "cutin": "cutin_bombard_01",       "desc": "전직(포격순양함) 고유 — 적 전체에 궤도 포화" },
+    { "id": "siege_cannon",    "name": "공성포 일제사격", "type": "finisher", "cost": { "tp": "full" }, "target": "line",      "effect": { "damageMultiplier": 2.8, "pierce": true },        "owner": "class:battleship", "cutin": "cutin_siege_01",         "desc": "전직(공성전함) 고유 — 직선상의 모든 적을 관통하는 포격" },
+    { "id": "fleet_command",   "name": "함대 총공격 지령", "type": "finisher", "cost": { "tp": "full" }, "target": "aoe_ally",  "effect": { "shield": 35, "heal": 40 },                      "owner": "class:carrier",    "cutin": "cutin_flagship_01",      "desc": "전직(기함) 고유 — 함대 전체에 보호막+회복 지원" }
   ]
 }
