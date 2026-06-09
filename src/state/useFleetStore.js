@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { useDataStore } from './useDataStore'
+import { useResourceStore } from './useResourceStore'
 import { applyXpGain, canPromote, promoteUnit } from '../core/growth'
 
 // 보유 함대 로스터 — ships.json의 "클래스 정의"와 별개로, 플레이어가 실제로 보유한 함선 인스턴스
@@ -117,6 +118,23 @@ export const useFleetStore = create((set, get) => ({
       roster: state.roster.map((e) =>
         e.instanceId === instanceId ? { ...e, equipment: { ...e.equipment, [slot]: null } } : e,
       ),
+    }))
+  },
+
+  // 조선소 — 비용(sc)을 지불하고 함선을 새 인스턴스로 편성에 추가한다(MOD-9).
+  buyShip: (shipId) => {
+    const ship = getShipById(shipId)
+    if (!ship) return false
+    if (!useResourceStore.getState().spend({ sc: ship.cost })) return false
+    const instanceId = `${shipId}-${Date.now()}`
+    set((state) => ({ roster: [...state.roster, freshEntry({ instanceId, shipId, aceId: null })] }))
+    return true
+  },
+
+  // MOD-10: 에이스 배정 — 해당 함선 인스턴스의 aceId를 교체한다(null 전달 시 배정 해제).
+  assignAce: (instanceId, aceId) => {
+    set((state) => ({
+      roster: state.roster.map((e) => (e.instanceId === instanceId ? { ...e, aceId } : e)),
     }))
   },
 }))

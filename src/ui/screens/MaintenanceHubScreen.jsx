@@ -3,6 +3,7 @@ import { useDataStore } from '../../state/useDataStore'
 import { useResourceStore } from '../../state/useResourceStore'
 import { useResearchStore } from '../../state/useResearchStore'
 import { useFleetStore } from '../../state/useFleetStore'
+import { useDevelopmentStore } from '../../state/useDevelopmentStore'
 import AssetImage from '../components/AssetImage'
 import './MaintenanceHubScreen.css'
 
@@ -46,9 +47,12 @@ function ResourceBar({ resources, wallet }) {
 function ResearchTab({ research, resourcesById, itemsById, shipsById }) {
   const isUnlocked = useResearchStore((s) => s.isUnlocked)
   const canUnlock = useResearchStore((s) => s.canUnlock)
+  const canAffordUnlock = useResearchStore((s) => s.canAffordUnlock)
   const unlock = useResearchStore((s) => s.unlock)
-  useResourceStore((s) => s.wallet) // 지갑 변동 시 재렌더되어야 canAfford 결과가 최신으로 반영된다
-  const canAfford = useResourceStore((s) => s.canAfford)
+  useResourceStore((s) => s.wallet) // 지갑 변동 시 재렌더
+  const isDeveloped = useDevelopmentStore((s) => s.isDeveloped)
+  useDevelopmentStore((s) => s.developed) // 개발 상태 변경 시 재렌더
+  const s3Boost = isDeveloped('s3')
   const researchById = new Map(research.map((n) => [n.id, n]))
 
   return (
@@ -57,7 +61,8 @@ function ResearchTab({ research, resourcesById, itemsById, shipsById }) {
         const unlocked = isUnlocked(node.id)
         const prereqNames = (node.prereq ?? []).map((id) => researchById.get(id)?.name ?? id)
         const prereqMet = (node.prereq ?? []).every((id) => isUnlocked(id))
-        const affordable = canAfford(node.cost)
+        const devReqMet = !node.devReq || isDeveloped(node.devReq)
+        const affordable = canAffordUnlock(node)
         const canUnlockNow = canUnlock(node) && affordable
 
         return (
@@ -68,8 +73,15 @@ function ResearchTab({ research, resourcesById, itemsById, shipsById }) {
             {prereqNames.length > 0 && (
               <p className="hub-card-meta">선행 연구: {prereqNames.join(', ')}{!prereqMet ? ' (미충족)' : ''}</p>
             )}
+            {node.devReq && (
+              <p className="hub-card-meta">
+                개발 조건: {node.devReq} 별계 개발
+                {devReqMet ? ' ✅' : ' 🔒 (미완료)'}
+              </p>
+            )}
             <p className="hub-card-meta">
               비용: <span className={affordable ? '' : 'hub-cost--short'}>{formatCost(node.cost, resourcesById)}</span>
+              {s3Boost && <span style={{ color: '#7cffb2', marginLeft: 6 }}>(-25% 할인 적용)</span>}
             </p>
             <ul className="hub-card-unlocks">
               {node.unlock.map((key) => (
@@ -80,7 +92,10 @@ function ResearchTab({ research, resourcesById, itemsById, shipsById }) {
               <span className="hub-status hub-status--done">해금 완료</span>
             ) : (
               <button className="hub-action-btn" disabled={!canUnlockNow} onClick={() => unlock(node)}>
-                {!prereqMet ? '🔒 선행 연구 필요' : affordable ? '🔬 연구 해금' : '⚠ 자원 부족'}
+                {!prereqMet ? '🔒 선행 연구 필요'
+                  : !devReqMet ? `🔒 ${node.devReq} 별계 개발 필요`
+                  : affordable ? '🔬 연구 해금'
+                  : '⚠ 자원 부족'}
               </button>
             )}
           </div>

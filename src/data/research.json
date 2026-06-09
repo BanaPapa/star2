@@ -8,6 +8,7 @@
     { "id": "salvage",       "name": "노획 분석",     "prereq": [],              "cost": { "ec": 35 },           "unlock": ["feature:salvage_to_research"] },
     { "id": "mining_eff",    "name": "채굴 효율",     "prereq": ["thrust_eng_1"], "cost": { "ti": 30, "ec": 20 }, "unlock": ["buff:resource_yield_25"] },
     { "id": "finisher_amp",  "name": "필살기 증폭",   "prereq": ["weapon_eng_1"], "cost": { "dm": 10 },           "unlock": ["buff:finisher_power"] },
-    { "id": "carrier_ops",   "name": "모함 운용",     "prereq": ["defense_eng_1"],"cost": { "dm": 15 },           "unlock": ["ship:carrier", "drone_bay"] }
+    { "id": "carrier_ops",   "name": "모함 운용",     "prereq": ["defense_eng_1"],"cost": { "dm": 15 },           "unlock": ["ship:carrier", "drone_bay"] },
+    { "id": "weapon_eng_adv","name": "고급 무기 공학", "prereq": ["weapon_eng_1"], "cost": { "dm": 5, "ec": 50 },  "unlock": ["heavy_railgun"],    "devReq": "s4" }
   ]
 }

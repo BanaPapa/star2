@@ -6,7 +6,8 @@
     { "id": "railgun",       "name": "레일건",          "slot": "weapon", "mods": { "atk": 18 }, "extra": "관통", "fit": ["cruiser","battleship"], "source": "research:weapon_eng_1", "price": 260, "icon": "item_railgun" },
     { "id": "missile_pod",   "name": "유도 미사일 포드", "slot": "weapon", "mods": { "atk": 12 }, "extra": "명중 일부 무시", "fit": ["all"],       "source": "shop",     "price": 170, "icon": "item_missile" },
     { "id": "plasma_lance",  "name": "플라즈마 랜스",    "slot": "weapon", "mods": { "atk": 25 }, "extra": "근접", "fit": ["battleship"],        "source": "craft",    "icon": "item_lance" },
-    { "id": "particle_beam", "name": "입자 빔",         "slot": "weapon", "mods": { "atk": 15 }, "extra": "사거리 +1", "fit": ["cruiser"],       "source": "research:weapon_eng_1", "price": 230, "icon": "item_beam" }
+    { "id": "particle_beam", "name": "입자 빔",         "slot": "weapon", "mods": { "atk": 15 }, "extra": "사거리 +1", "fit": ["cruiser"],       "source": "research:weapon_eng_1", "price": 230, "icon": "item_beam" },
+    { "id": "heavy_railgun", "name": "중형 레일건",      "slot": "weapon", "mods": { "atk": 28 }, "extra": "관통·원거리",  "fit": ["battleship","cruiser"], "source": "research:weapon_eng_adv", "price": 380, "icon": "item_railgun" }
   ],
   "modules": [
     { "id": "armor_plate",   "name": "강화 장갑판",   "slot": "module", "mods": { "hp": 40, "def": 10 }, "source": "shop", "price": 150, "icon": "item_armor" },

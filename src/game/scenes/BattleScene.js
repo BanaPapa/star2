@@ -6,6 +6,10 @@ import { collectLineTargets } from '../../core/skills'
 import { getEffectiveShip, applyEquipment, getUnitFinishers, xpRewardForVictory, canPromote } from '../../core/growth'
 import { buildEncounterPlacements } from '../../core/encounter'
 import { useFleetStore } from '../../state/useFleetStore'
+import { useResourceStore } from '../../state/useResourceStore'
+import { useProgressStore } from '../../state/useProgressStore'
+import { useDataStore } from '../../state/useDataStore'
+import { useSettingsStore } from '../../state/useSettingsStore'
 import { getTerrain } from '../systems/terrain'
 import { getEmojiFallback } from '../../core/assetMap'
 import CutinManager from '../effects/CutinManager'
@@ -80,16 +84,17 @@ const ACTED_ALPHA = 0.5
 // 여기서는 "턴마다 충전되는 추이"를 보여주는 표시값이다.
 const TP_MAX = 100
 
-const ENEMY_ACTION_DELAY = 260 // 적 행동 사이 텀(ms) — 무슨 일이 일어나는지 눈으로 따라갈 수 있게
+const DELAY_NORMAL = 260
+const DELAY_FAST   = 80
 
 export default class BattleScene extends Phaser.Scene {
   constructor() {
     super('BattleScene')
   }
 
-  init({ ships, combatRules, skills, aces, enemies, items, node, onVictory, onExit }) {
+  init({ ships, combatRules, skills, aces, enemies, items, node, onVictory, onExit, onEnding, onGameOver }) {
     // this.scene.restart()에 그대로 재전달하기 위해 보관(MOD-6: 노드·콜백도 함께 — "같은 전투 다시 시작"에 필요)
-    this.initArgs = { ships, combatRules, skills, aces, enemies, items, node, onVictory, onExit }
+    this.initArgs = { ships, combatRules, skills, aces, enemies, items, node, onVictory, onExit, onEnding, onGameOver }
     this.shipsById = new Map(ships.map((s) => [s.id, s]))
     this.combatRules = combatRules
     this.allSkills = skills
@@ -104,6 +109,8 @@ export default class BattleScene extends Phaser.Scene {
     this.node = node ?? null
     this.onVictory = onVictory ?? null
     this.onExit = onExit ?? null
+    this.onEnding = onEnding ?? null
+    this.onGameOver = onGameOver ?? null
     this.terrain = buildTerrainLayout()
     this.units = []
     this.selected = null
@@ -112,7 +119,7 @@ export default class BattleScene extends Phaser.Scene {
     this.turnNumber = 1
     this.phase = 'player' // 'player' | 'enemy'
     this.pendingAbility = null // { unit, skill, presenter } — 필살기 조준 대기 상태
-    this.cutinEnabled = true // 토글 off 시 컷인 연출을 건너뛰고 효과만 즉시 적용 (DoD: "토글 off 시 빠른 진행")
+    this.cutinEnabled = useSettingsStore.getState().cutinEnabled // 설정에서 초기값 읽기(MOD-12)
     this.autoBattle = false // ON 시 플레이어 페이즈에서 아군도 적 AI와 동일한 휴리스틱으로 자동 행동(테스트 편의용 QoL)
 
     // MOD-5: 아군은 useFleetStore의 로스터(레벨·성장치·전직 여부 보유)를 그대로 가져와 생성한다 —
@@ -120,6 +127,7 @@ export default class BattleScene extends Phaser.Scene {
     this.roster = useFleetStore.getState().roster
     this.battleEnded = false
     this.defeatedEnemyShips = [] // 격파한 적의 베이스 함선 데이터 — 승리 보상 XP 계산에 사용
+    this.bossPhase2Triggered = new Set() // MOD-11: 보스 페이즈 2 전환 중복 방지
   }
 
   create() {
@@ -165,28 +173,40 @@ export default class BattleScene extends Phaser.Scene {
     this.cutinToggleText.on('pointerdown', (_pointer, _lx, _ly, event) => {
       event?.stopPropagation()
       this.cutinEnabled = !this.cutinEnabled
+      useSettingsStore.getState().setCutinEnabled(this.cutinEnabled) // 설정 영구 저장
       this.refreshCutinToggleLabel()
     })
     this.refreshCutinToggleLabel()
 
+    this.autoBattleBg = this.add
+      .rectangle(this.scale.width - 14, 56, 295, 26, 0x1a1608, 0.94)
+      .setOrigin(1, 0)
+      .setDepth(20)
+      .setInteractive({ useHandCursor: true })
+
     this.autoBattleToggleText = this.add
-      .text(this.scale.width - 16, 54, '', {
+      .text(this.scale.width - 22, 59, '', {
         fontFamily: 'Share Tech Mono, monospace',
-        fontSize: '13px',
-        color: TOGGLE_COLOR,
+        fontSize: '14px',
+        fontStyle: 'bold',
+        color: '#ffd166',
       })
       .setOrigin(1, 0)
+      .setDepth(21)
       .setInteractive({ useHandCursor: true })
-    this.autoBattleToggleText.on('pointerdown', (_pointer, _lx, _ly, event) => {
+
+    const _doToggleAuto = (_pointer, _lx, _ly, event) => {
       event?.stopPropagation()
       this.autoBattle = !this.autoBattle
       this.refreshAutoBattleToggleLabel()
       if (this.autoBattle && this.phase === 'player' && !this.busy && !this.battleEnded) {
         this.pendingAbility = null
         this.clearSelection()
-        this.time.delayedCall(ENEMY_ACTION_DELAY, () => this.runAllyAutoTurn(0))
+        this.time.delayedCall(this.actionDelay, () => this.runAllyAutoTurn(0))
       }
-    })
+    }
+    this.autoBattleToggleText.on('pointerdown', _doToggleAuto)
+    this.autoBattleBg.on('pointerdown', _doToggleAuto)
     this.refreshAutoBattleToggleLabel()
 
     this.cutinManager = new CutinManager(this)
@@ -199,6 +219,11 @@ export default class BattleScene extends Phaser.Scene {
     this.startPlayerPhase()
   }
 
+  // 전투 속도 설정에 따른 적 행동 딜레이(ms) — 설정 화면에서 변경 즉시 반영된다.
+  get actionDelay() {
+    return useSettingsStore.getState().battleSpeed === 'fast' ? DELAY_FAST : DELAY_NORMAL
+  }
+
   refreshCutinToggleLabel() {
     this.cutinToggleText.setText(
       this.cutinEnabled
@@ -208,11 +233,21 @@ export default class BattleScene extends Phaser.Scene {
   }
 
   refreshAutoBattleToggleLabel() {
-    this.autoBattleToggleText.setText(
-      this.autoBattle
-        ? '🤖 자동전투 ON — 아군이 자동으로 행동 (클릭 시 끄기)'
-        : '🕹️ 자동전투 OFF — 직접 조작 (클릭 시 켜기)',
-    )
+    if (this.autoBattle) {
+      this.autoBattleToggleText?.setColor('#7dffb0')
+      this.autoBattleToggleText?.setText('🤖 자동전투 ON — 클릭 시 끄기')
+      if (this.autoBattleBg) {
+        this.autoBattleBg.setFillStyle(0x082212, 0.95)
+        this.autoBattleBg.setStrokeStyle(2, 0x7dffb0, 0.8)
+      }
+    } else {
+      this.autoBattleToggleText?.setColor('#ffd166')
+      this.autoBattleToggleText?.setText('🤖 자동전투 OFF ← 클릭해서 켜기')
+      if (this.autoBattleBg) {
+        this.autoBattleBg.setFillStyle(0x1a1608, 0.94)
+        this.autoBattleBg.setStrokeStyle(2, 0xffd166, 0.7)
+      }
+    }
   }
 
   // ----- 좌표 변환 -----
@@ -649,6 +684,7 @@ export default class BattleScene extends Phaser.Scene {
       if (effect.apDebuff) target.apDebuff = (target.apDebuff ?? 0) + effect.apDebuff
       const lethal = target.hp <= 0
       if (lethal) this.destroyUnit(target)
+      else this.checkBossPhaseTransition(target)
       summaries.push(`${target.ship.name} ${dealt}데미지${lethal ? ' (격파!)' : ''}`)
     }
 
@@ -758,6 +794,7 @@ export default class BattleScene extends Phaser.Scene {
 
     this.showFloatingText(defender, `-${result.damage}`, DAMAGE_TEXT_COLOR, () => {
       if (result.lethal) this.destroyUnit(defender)
+      else this.checkBossPhaseTransition(defender)
       finish()
     })
 
@@ -809,6 +846,71 @@ export default class BattleScene extends Phaser.Scene {
     this.checkBattleEnd()
   }
 
+  // ----- MOD-11: 보스 페이즈 전환 -----
+
+  // HP가 50% 이하로 내려간 보스 유닛의 2페이즈 전환을 1회만 발동한다.
+  checkBossPhaseTransition(unit) {
+    if (unit.side !== 'enemy' || unit.bossPhase === 2) return
+    const bossData = this.bossesById.get(unit.ship.id)
+    if (!bossData?.phases?.length) return
+    const key = unit.instanceId ?? unit.ship.id
+    if (this.bossPhase2Triggered.has(key)) return
+    if (unit.hp > unit.maxHp * 0.5) return
+    this.bossPhase2Triggered.add(key)
+    this.triggerBossPhase2(unit, bossData)
+  }
+
+  triggerBossPhase2(unit, bossData) {
+    unit.bossPhase = 2
+    // ATK 증폭 (enemies.json의 phaseBoost)
+    const boost = bossData.phaseBoost?.atk ?? 0
+    if (boost > 0) unit.ship = { ...unit.ship, atk: unit.ship.atk + boost }
+
+    this.refreshHud(
+      `⚡ "${unit.ship.name}" 2페이즈 전환! ${bossData.phases[1]?.behavior ?? '강화 패턴 활성화'} — ATK +${boost}!`,
+    )
+
+    // 차원 균열(void_rift) 소환 — 빈 슬롯에 1기
+    const riftDef = this.enemiesById.get('void_rift')
+    if (riftDef?.stats) {
+      const riftShip = {
+        ...riftDef.stats,
+        id: 'void_rift',
+        name: riftDef.name,
+        sprite: riftDef.sprite,
+        tpPerTurn: riftDef.stats.tpPerTurn ?? 0,
+      }
+      const spawnPos = ENEMY_SPAWN_POSITIONS.find(
+        (pos) => !this.units.some((u) => u.gridX === pos.x && u.gridY === pos.y),
+      )
+      if (spawnPos) {
+        this.spawnUnit({ side: 'enemy', shipId: 'void_rift', ship: riftShip, x: spawnPos.x, y: spawnPos.y })
+      }
+    }
+  }
+
+  // 보스 2페이즈 광역 차원 파동 — ATK×0.5 피해를 아군 전원에게 동시 적용
+  executeWardenAoe(unit, onDone) {
+    const allies = [...this.units.filter((u) => u.side === 'ally')]
+    if (!allies.length) { onDone(); return }
+
+    const rawDamage = Math.floor(unit.ship.atk * 0.5)
+    this.refreshHud(`⚡ ${unit.ship.name} — 차원 파동! 아군 전원에게 ${rawDamage} 광역 피해!`)
+    this.busy = true
+
+    for (const ally of allies) {
+      const dealt = this.applyDamageWithShield(ally, rawDamage)
+      this.showFloatingText(ally, `-${dealt}`, DAMAGE_TEXT_COLOR)
+    }
+
+    this.time.delayedCall(700, () => {
+      const dead = allies.filter((a) => a.hp <= 0 && this.units.includes(a))
+      for (const ally of dead) this.destroyUnit(ally)
+      this.busy = false
+      if (!this.battleEnded) onDone()
+    })
+  }
+
   // ----- 전투 종료 판정 & 보상 (MOD-5: "전투 승리 시 XP 분배"의 출발점) -----
   // 한쪽 진영이 전멸하면 즉시 종료 처리 — 이후 입력은 battleEnded 가드로 모두 막는다.
   checkBattleEnd() {
@@ -844,32 +946,102 @@ export default class BattleScene extends Phaser.Scene {
       return `${unit.ship.baseName ?? unit.ship.name} +${totalXp} XP${levelPart}${promotionHint}`
     })
 
-    if (this.node) this.onVictory?.(this.node)
+    const extraLines = []
 
+    if (this.node) {
+      this.onVictory?.(this.node)
+
+      // MOD-8: 전투 보상 자원 지급
+      if (this.node.reward?.resource) {
+        useResourceStore.getState().earn(this.node.reward.resource)
+        const resText = Object.entries(this.node.reward.resource)
+          .map(([k, v]) => `${k} +${v}`)
+          .join(' · ')
+        extraLines.push(`💰 자원 획득: ${resText}`)
+      }
+
+      // MOD-8: 채굴 노드 첫 방문 시 즉시 채굴 (mining 데이터가 있는 별계)
+      const mineResult = useProgressStore.getState().harvest(this.node)
+      if (mineResult) {
+        extraLines.push(
+          `⛏ 채굴: ${mineResult.resource} +${mineResult.amount} (잔여 매장량 ${mineResult.remaining})`,
+        )
+      }
+
+      // MOD-10: 히든 유니크 — 아직 획득하지 않은 경우 1회 자동 지급
+      if (this.node.hidden) {
+        const progressStore = useProgressStore.getState()
+        if (!progressStore.isHiddenObtained(this.node.id)) {
+          useFleetStore.getState().addItem(this.node.hidden)
+          progressStore.markHiddenObtained(this.node.id)
+          const hiddenItem = this.itemsById.get(this.node.hidden)
+          extraLines.push(`🎁 히든 유니크 획득: "${hiddenItem?.name ?? this.node.hidden}"! (놓치면 영구 불가)`)
+        }
+      }
+    }
+
+    const isEnding = !!this.node?.reward?.ending
     const headline = this.node
-      ? [`"${this.node.name}" 정복! 인접한 다음 별계로 가는 길이 열렸습니다.`]
+      ? isEnding
+        ? [`성단 보스 "심연의 파수꾼" 격파! 변경 성단을 해방했습니다!`]
+        : [`"${this.node.name}" 정복! 인접한 다음 별계로 가는 길이 열렸습니다.`]
       : []
 
+    // MOD-10: 레이븐 영입 선택지 — s6 정복 시 1회만 제공
+    const endActions = this.buildEndActions()
+    if (this.node?.recruit) {
+      const aceId = this.node.recruit
+      const progressStore = useProgressStore.getState()
+      if (!progressStore.recruitedAces.includes(aceId)) {
+        const acesData = useDataStore.getState().data?.aces?.aces ?? []
+        const aceData = acesData.find((a) => a.id === aceId)
+        if (aceData) {
+          extraLines.push(`🎖 ${aceData.name} 영입 가능 — 아래 버튼으로 영입하세요. (놓치면 영구 불가)`)
+          endActions.push({
+            label: `🎖 ${aceData.name} 영입하기`,
+            onClick: () => { useProgressStore.getState().recruitAce(aceId) },
+          })
+        }
+      }
+    }
+
+    // MOD-11: 엔딩 — 최종 보스 격파 시 별도 버튼 추가
+    if (isEnding) {
+      endActions.unshift({
+        label: '🌌 엔딩 보기 — 다음 은하로',
+        onClick: () => this.onEnding?.(),
+      })
+    }
+
     this.showBattleEndBanner(
-      '🏆 승리!',
+      isEnding ? '🌌 성단 클리어!' : '🏆 승리!',
       [
         ...headline,
+        ...extraLines,
         `격파한 적 함선 ${this.defeatedEnemyShips.length}척 — 보상 XP ${totalXp} (모든 생존 함선에게 동일 지급)`,
         ...lines,
       ],
-      this.buildEndActions(),
+      endActions,
     )
   }
 
   handleDefeat() {
-    this.showBattleEndBanner(
-      '💥 패배...',
-      [
-        '함대가 전멸했습니다 — 보상 없이 전투가 종료됩니다(정복 상태는 변하지 않습니다).',
-        '다시 시작해 재도전하거나, 맵으로 돌아가 편성을 가다듬으세요(성장치는 그대로 유지됩니다).',
-      ],
-      this.buildEndActions(),
-    )
+    const { width, height } = this.scale
+    const cx = width / 2, cy = height / 2
+
+    this.add.rectangle(cx, cy, width, height, 0x050008, 0.88).setDepth(300)
+    this.add.text(cx, cy - 80, '💥 게임 오버', {
+      fontFamily: 'Share Tech Mono, monospace', fontSize: '42px', fontStyle: 'bold', color: '#dc2626',
+    }).setOrigin(0.5).setDepth(301)
+    this.add.text(cx, cy - 20, '함대가 전멸했습니다.', {
+      fontFamily: 'Share Tech Mono, monospace', fontSize: '18px', color: '#cdd8f4',
+    }).setOrigin(0.5).setDepth(301)
+
+    const btn = this.add.text(cx, cy + 60, '🔄 처음부터 다시 시작', {
+      fontFamily: 'Share Tech Mono, monospace', fontSize: '18px', fontStyle: 'bold', color: '#ffd166',
+    }).setOrigin(0.5).setDepth(301).setInteractive({ useHandCursor: true })
+    btn.on('pointerdown', () => this.onGameOver?.())
+    this.tweens.add({ targets: btn, alpha: 0.4, duration: 600, yoyo: true, repeat: -1 })
   }
 
   // 전투 종료 후 선택지 — "맵으로 복귀"는 노드 기반 전투(MOD-6)일 때만 보여준다(자유 전투 호환).
@@ -956,6 +1128,7 @@ export default class BattleScene extends Phaser.Scene {
       unit.maxAp = unit.ship.ap
     }
     unit.ap = unit.maxAp
+    unit.aoeFiredThisTurn = false // MOD-11: 보스 2페이즈 광역 공격 플래그 초기화
     this.refreshUnitStatusLabel(unit)
     this.updateUnitAvailability(unit)
   }
@@ -979,7 +1152,7 @@ export default class BattleScene extends Phaser.Scene {
     this.refreshHud()
 
     if (this.autoBattle && !this.battleEnded) {
-      this.time.delayedCall(ENEMY_ACTION_DELAY, () => this.runAllyAutoTurn(0))
+      this.time.delayedCall(this.actionDelay, () => this.runAllyAutoTurn(0))
     }
   }
 
@@ -1022,7 +1195,7 @@ export default class BattleScene extends Phaser.Scene {
       return
     }
     this.takeEnemyTurn(unit, () => {
-      this.time.delayedCall(ENEMY_ACTION_DELAY, () => {
+      this.time.delayedCall(this.actionDelay, () => {
         this.refreshHud(`적 턴 ${this.turnNumber} — 적이 행동합니다...`)
         this.runEnemyUnit(index + 1)
       })
@@ -1031,6 +1204,17 @@ export default class BattleScene extends Phaser.Scene {
 
   // unit이 AP를 모두 쓰거나 더 할 행동이 없을 때까지 이동→공격을 반복한다.
   takeEnemyTurn(unit, onDone) {
+    // MOD-11: 보스 2페이즈 — 매 턴 첫 AP를 광역 차원 파동에 소모
+    if (unit.bossPhase === 2 && !unit.aoeFiredThisTurn && unit.ap >= 1) {
+      unit.aoeFiredThisTurn = true
+      this.spendAp(unit, 1)
+      this.executeWardenAoe(unit, () => {
+        if (!this.battleEnded) this.takeEnemyTurn(unit, onDone)
+        else onDone()
+      })
+      return
+    }
+
     const step = () => {
       if (unit.ap <= 0 || !this.units.includes(unit)) {
         onDone()
@@ -1096,7 +1280,7 @@ export default class BattleScene extends Phaser.Scene {
       return
     }
     this.takeAllyAutoTurn(unit, () => {
-      this.time.delayedCall(ENEMY_ACTION_DELAY, () => {
+      this.time.delayedCall(this.actionDelay, () => {
         if (!this.autoBattle || this.battleEnded || this.phase !== 'player') return
         this.refreshHud(`자동전투 — 아군이 행동합니다... (턴 ${this.turnNumber})`)
         this.runAllyAutoTurn(index + 1)

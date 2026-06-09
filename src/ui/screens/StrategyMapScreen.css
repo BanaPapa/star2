@@ -1,6 +1,5 @@
 .map-screen {
   width: 100%;
-  max-width: 1280px;
   display: flex;
   gap: 16px;
   align-items: flex-start;
@@ -10,7 +9,8 @@
 .map-canvas {
   position: relative;
   flex: 1;
-  aspect-ratio: 16 / 9;
+  height: calc(100vh - 115px);
+  min-height: 500px;
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -143,6 +143,82 @@
   color: var(--dim);
 }
 
+.map-info-mining {
+  margin: 0;
+  font-size: 13px;
+  color: var(--cyan);
+  line-height: 1.5;
+}
+
+.map-info-harvest {
+  margin: 0;
+  padding: 6px 10px;
+  font-size: 13px;
+  color: var(--gold);
+  background: rgba(255, 209, 102, 0.1);
+  border: 1px solid rgba(255, 209, 102, 0.35);
+  border-radius: 6px;
+  line-height: 1.4;
+}
+
+.map-dev-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px;
+  background: rgba(255, 209, 102, 0.06);
+  border: 1px solid rgba(255, 209, 102, 0.25);
+  border-radius: 8px;
+}
+
+.map-dev-title {
+  margin: 0;
+  font-size: 13px;
+  color: var(--gold);
+  font-weight: bold;
+}
+
+.map-dev-desc {
+  margin: 0;
+  font-size: 12px;
+  color: var(--dim);
+}
+
+.map-dev-cost {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.map-dev-cost--short {
+  color: #e05555;
+}
+
+.map-dev-done {
+  margin: 0;
+  padding: 6px 10px;
+  font-size: 13px;
+  color: #7cffb2;
+  background: rgba(124, 255, 178, 0.08);
+  border: 1px solid rgba(124, 255, 178, 0.25);
+  border-radius: 6px;
+  line-height: 1.4;
+}
+
+.map-action-btn--develop {
+  border-color: var(--gold);
+  background: rgba(255, 209, 102, 0.14);
+}
+
+.map-action-btn--develop:hover:not(:disabled) {
+  background: rgba(255, 209, 102, 0.26);
+}
+
+.map-action-btn--disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .map-action-btn {
   margin-top: 4px;
   padding: 10px 14px;
@@ -166,4 +242,37 @@
 
 .map-action-btn--enter:hover {
   background: rgba(255, 209, 102, 0.24);
+}
+
+.map-summary-toggle {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  padding: 6px 14px;
+  background: rgba(10, 14, 39, 0.92);
+  border: 2px solid rgba(255, 209, 102, 0.6);
+  border-radius: 8px;
+  color: var(--gold);
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: bold;
+  cursor: pointer;
+  z-index: 10;
+  user-select: none;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.map-summary-toggle:hover {
+  background: rgba(255, 209, 102, 0.14);
+  border-color: var(--gold);
+}
+
+.map-summary-toggle--on {
+  border-color: #7cffb2;
+  color: #7cffb2;
+  background: rgba(12, 36, 20, 0.94);
+}
+
+.map-summary-toggle--on:hover {
+  background: rgba(12, 50, 28, 0.95);
 }

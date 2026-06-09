@@ -46,11 +46,11 @@
 
 .dev-screen {
   min-height: 100vh;
-  padding: 28px 24px 40px;
+  padding: 8px 8px 0;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
   text-align: center;
 }
 
@@ -78,6 +78,41 @@
   color: var(--dim);
   max-width: 920px;
   line-height: 1.6;
+}
+
+.resource-hud {
+  display: flex;
+  gap: 20px;
+  padding: 8px 20px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-family: var(--mono);
+  font-size: 13px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.resource-hud-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.resource-hud-icon {
+  font-size: 15px;
+  line-height: 1;
+}
+
+.resource-hud-name {
+  color: var(--dim);
+}
+
+.resource-hud-value {
+  color: var(--gold);
+  font-weight: bold;
+  min-width: 28px;
+  text-align: right;
 }
 
 .battle-screen {
