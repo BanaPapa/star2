@@ -73,7 +73,7 @@ function App() {
     navigate('ending')
   }
 
-  const isShell = view === 'title' || view === 'battle' || view === 'ending'
+  const inBattle = view === 'battle'
 
   return (
     <>
@@ -96,61 +96,71 @@ function App() {
       )}
 
       {view !== 'title' && view !== 'gameover' && (
-        <div className="dev-screen">
-          {view !== 'map' && <h1>7<span className="accent">★</span> STAR</h1>}
-          {view !== 'map' && <p className="subtitle">MOD-13 COMPLETE · 1성단 수직 슬라이스</p>}
+        <div className="app-shell">
+          <aside className="app-sidebar">
+            <div className="app-sidebar-brand">
+              <span className="app-sidebar-logo">7<span className="accent">★</span> STAR</span>
+              <span className="app-sidebar-sub">MOD-13 · 수직 슬라이스</span>
+            </div>
 
-          {!isShell && <ResourceHud />}
+            <ResourceHud sidebar />
 
-          {!isShell && (
-            <div className="fleet-toggle">
+            <nav className="app-sidebar-nav">
               <button
-                className={`fleet-toggle-btn${view === 'map' ? ' active' : ''}`}
-                onClick={() => navigate('map')}
+                className={`app-sidebar-btn${view === 'map' ? ' active' : ''}`}
+                onClick={() => !inBattle && navigate('map')}
+                disabled={inBattle}
               >
                 🌌 성단 맵
               </button>
               <button
-                className={`fleet-toggle-btn${view === 'fleet' ? ' active' : ''}`}
-                onClick={() => navigate('fleet')}
+                className={`app-sidebar-btn${view === 'fleet' ? ' active' : ''}`}
+                onClick={() => !inBattle && navigate('fleet')}
+                disabled={inBattle}
               >
                 🚀 함대 편성
               </button>
               <button
-                className={`fleet-toggle-btn${view === 'hub' ? ' active' : ''}`}
-                onClick={() => navigate('hub')}
+                className={`app-sidebar-btn${view === 'hub' ? ' active' : ''}`}
+                onClick={() => !inBattle && navigate('hub')}
+                disabled={inBattle}
               >
                 🔧 정비 허브
               </button>
               <button
-                className={`fleet-toggle-btn${view === 'save' ? ' active' : ''}`}
-                onClick={() => navigate('save')}
+                className={`app-sidebar-btn${view === 'save' ? ' active' : ''}`}
+                onClick={() => !inBattle && navigate('save')}
+                disabled={inBattle}
               >
                 💾 저장/설정
               </button>
-            </div>
-          )}
+            </nav>
+          </aside>
 
-          {view === 'map' && (
-            <StrategyMapScreen onEnterBattle={handleEnterBattle} onGameOver={handleGameOver} />
-          )}
+          <main className="app-content">
+            {view === 'map' && (
+              <StrategyMapScreen onEnterBattle={handleEnterBattle} onGameOver={handleGameOver} />
+            )}
 
-          {view === 'battle' && (
-            <BattleScreen nodeId={activeNodeId} onExit={handleExitBattle} onEnding={handleEnding} onGameOver={handleGameOver} />
-          )}
+            {view === 'battle' && (
+              <BattleScreen nodeId={activeNodeId} onExit={handleExitBattle} onEnding={handleEnding} onGameOver={handleGameOver} />
+            )}
 
-          {view === 'save' && (
-            <SaveScreen
-              onBack={prevView === 'title' ? () => navigate('title') : undefined}
-              onLoaded={() => navigate('map')}
-            />
-          )}
+            {view === 'ending' && <EndingScreen onRestart={() => window.location.reload()} />}
 
-          {view === 'ending' && <EndingScreen onRestart={() => window.location.reload()} />}
-
-          {view === 'fleet' && <FleetScreen />}
-
-          {view === 'hub' && <MaintenanceHubScreen />}
+            {(view === 'fleet' || view === 'hub' || view === 'save') && (
+              <div className="app-content-scroll">
+                {view === 'save' && (
+                  <SaveScreen
+                    onBack={prevView === 'title' ? () => navigate('title') : undefined}
+                    onLoaded={() => navigate('map')}
+                  />
+                )}
+                {view === 'fleet' && <FleetScreen />}
+                {view === 'hub' && <MaintenanceHubScreen />}
+              </div>
+            )}
+          </main>
         </div>
       )}
     </>

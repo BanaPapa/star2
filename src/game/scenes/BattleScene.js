@@ -13,10 +13,11 @@ import { useSettingsStore } from '../../state/useSettingsStore'
 import { getTerrain } from '../systems/terrain'
 import { getEmojiFallback } from '../../core/assetMap'
 import CutinManager from '../effects/CutinManager'
+import { useBattleStore } from '../../state/useBattleStore'
 
 const COLS = 12
 const ROWS = 10
-const CELL = 80
+let CELL = 80
 
 // 지형 샘플 배치 (MOD-1 프로토타입 — 빈 공간/소행성/잔해 표시 확인용)
 const ASTEROID_CELLS = [
@@ -64,7 +65,7 @@ const ABILITY_HIGHLIGHT_COLOR = 0xffd166 // 필살기 조준 모드 — 이동�
 const SELECT_RING_COLOR = 0xffd166
 const GRID_LINE_COLOR = 0x4fb8ff
 
-const HP_BAR_WIDTH = CELL * 0.56
+let HP_BAR_WIDTH = CELL * 0.56
 const HP_BAR_HEIGHT = 5
 const HP_BAR_BG_COLOR = 0x1a2030
 
@@ -131,6 +132,13 @@ export default class BattleScene extends Phaser.Scene {
   }
 
   create() {
+    // 컨테이너 크기에 맞춰 CELL 동적 결정 — 상단 HUD 80px 확보
+    CELL = Math.max(52, Math.min(
+      Math.floor(this.scale.width * 0.92 / COLS),
+      Math.floor((this.scale.height - 80) / ROWS),
+    ))
+    HP_BAR_WIDTH = CELL * 0.56
+
     this.originX = (this.scale.width - COLS * CELL) / 2
     this.originY = (this.scale.height - ROWS * CELL) / 2 + 22
 
@@ -1144,12 +1152,33 @@ export default class BattleScene extends Phaser.Scene {
     unit.container.setAlpha(unit.ap > 0 ? 1 : ACTED_ALPHA)
   }
 
+  // ----- 배틀 스토어 동기화 (React 서브네비 패널용) -----
+  syncUnitsToStore() {
+    useBattleStore.getState().setUnits(
+      this.units.map(u => ({
+        id: u.instanceId ?? `${u.side}_${u.ship.name}`,
+        side: u.side,
+        name: u.ship.name,
+        sprite: getEmojiFallback(u.ship.sprite),
+        hp: u.hp,
+        maxHp: u.maxHp,
+        ap: u.ap,
+        maxAp: u.maxAp,
+        tp: u.tp,
+        level: u.ship.level ?? 1,
+        aceName: u.ace?.name ?? null,
+        dead: u.hp <= 0,
+      }))
+    )
+  }
+
   // ----- 턴 순환: 플레이어 페이즈 ↔ 적 페이즈 -----
   startPlayerPhase() {
     this.phase = 'player'
     this.allyQueue = this.units.filter((u) => u.side === 'ally')
     for (const unit of this.allyQueue) this.refillAp(unit)
     this.refreshHud()
+    this.syncUnitsToStore()
 
     if (this.autoBattle && !this.battleEnded) {
       this.time.delayedCall(this.actionDelay, () => this.runAllyAutoTurn(0))
@@ -1170,6 +1199,7 @@ export default class BattleScene extends Phaser.Scene {
     this.enemyQueue = this.units.filter((u) => u.side === 'enemy')
     for (const unit of this.enemyQueue) this.refillAp(unit)
     this.refreshHud(`적 턴 ${this.turnNumber} — 적이 행동합니다...`)
+    this.syncUnitsToStore()
     this.runEnemyUnit(0)
   }
 

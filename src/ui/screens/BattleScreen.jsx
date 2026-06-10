@@ -3,13 +3,8 @@ import Phaser from 'phaser'
 import BattleScene from '../../game/scenes/BattleScene'
 import { useDataStore } from '../../state/useDataStore'
 import { useProgressStore } from '../../state/useProgressStore'
+import { useBattleStore } from '../../state/useBattleStore'
 
-const WIDTH = 1200
-const HEIGHT = 850
-
-// MOD-6: 더 이상 고정 대진이 아니라, 전략맵에서 선택한 노드(nodeId)의 적 구성으로 전투에 진입한다.
-// 승리 시 useProgressStore.conquer로 정복 상태를 갱신하고, "맵으로 복귀" 시 onExit으로 화면을 되돌린다.
-// MOD-11: onEnding — 최종 보스 격파 후 엔딩 화면으로 전환하는 콜백.
 export default function BattleScreen({ nodeId, onExit, onEnding, onGameOver }) {
   const containerRef = useRef(null)
   const gameRef = useRef(null)
@@ -29,16 +24,27 @@ export default function BattleScreen({ nodeId, onExit, onEnding, onGameOver }) {
   const systems = useDataStore((s) => s.data?.systems?.systems)
   const conquer = useProgressStore((s) => s.conquer)
 
+  const units = useBattleStore((s) => s.units)
+  const allies = units.filter((u) => u.side === 'ally')
+  const enemyUnits = units.filter((u) => u.side === 'enemy')
+
   const node = systems?.find((s) => s.id === nodeId) ?? null
+
+  useEffect(() => {
+    return () => useBattleStore.getState().clearUnits()
+  }, [])
 
   useEffect(() => {
     if (!ships || !combatRules || !skills || !aces || !enemies || !items || !node || !containerRef.current || gameRef.current) return
 
+    const w = containerRef.current.offsetWidth || window.innerWidth - 360
+    const h = containerRef.current.offsetHeight || window.innerHeight
+
     const game = new Phaser.Game({
       type: Phaser.AUTO,
       parent: containerRef.current,
-      width: WIDTH,
-      height: HEIGHT,
+      width: w,
+      height: h,
       backgroundColor: '#0a0e27',
     })
     game.scene.add('BattleScene', BattleScene, true, {
@@ -60,7 +66,71 @@ export default function BattleScreen({ nodeId, onExit, onEnding, onGameOver }) {
       game.destroy(true)
       gameRef.current = null
     }
-  }, [ships, combatRules, skills, aces, enemies, items, node, conquer]) // onEnding/onExit은 ref로 처리
+  }, [ships, combatRules, skills, aces, enemies, items, node, conquer])
 
-  return <div className="battle-screen" ref={containerRef} />
+  const tpColor = (tp) => {
+    if (tp >= 100) return '#ffd166'
+    if (tp >= 50) return '#4fb8ff'
+    return '#6b7aa8'
+  }
+
+  function UnitCard({ u }) {
+    const hpPct = u.maxHp > 0 ? Math.max(0, (u.hp / u.maxHp) * 100) : 0
+    const apPct = u.maxAp > 0 ? Math.max(0, (u.ap / u.maxAp) * 100) : 0
+    const tpPct = Math.min(100, Math.round((u.tp / 100) * 100))
+    const isAlly = u.side === 'ally'
+    return (
+      <div className={`bnav-unit${u.dead ? ' bnav-unit--dead' : ''}`}>
+        <div className="bnav-unit-header">
+          <span className="bnav-unit-sprite">{u.sprite}</span>
+          <div className="bnav-unit-info">
+            <span className="bnav-unit-name">{u.name}</span>
+            {u.aceName && <span className="bnav-unit-ace">{u.aceName}</span>}
+          </div>
+        </div>
+        <div className="bnav-bars">
+          <div className="bnav-bar-row">
+            <span className="bnav-bar-label">HP</span>
+            <div className="bnav-bar-track">
+              <div className="bnav-bar-fill" style={{ width: hpPct + '%', background: isAlly ? '#3ad6c4' : '#e23b4e' }} />
+            </div>
+            <span className="bnav-bar-val">{u.hp}</span>
+          </div>
+          <div className="bnav-bar-row">
+            <span className="bnav-bar-label">AP</span>
+            <div className="bnav-bar-track">
+              <div className="bnav-bar-fill" style={{ width: apPct + '%', background: '#ffd166' }} />
+            </div>
+            <span className="bnav-bar-val">{u.ap}</span>
+          </div>
+          <div className="bnav-bar-row">
+            <span className="bnav-bar-label">TP</span>
+            <div className="bnav-bar-track">
+              <div className="bnav-bar-fill" style={{ width: tpPct + '%', background: tpColor(u.tp) }} />
+            </div>
+            <span className="bnav-bar-val" style={{ color: tpColor(u.tp) }}>{tpPct}%</span>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="battle-layout">
+      <aside className="battle-subnav">
+        <div className="bnav-section">
+          <div className="bnav-heading bnav-heading--ally">⚡ 아군</div>
+          {allies.length === 0 && units.length === 0 && (
+            <p className="bnav-empty">로딩 중…</p>
+          )}
+          {allies.map((u) => <UnitCard key={u.id} u={u} />)}
+        </div>
+        <div className="bnav-section">
+          <div className="bnav-heading bnav-heading--enemy">💀 적군</div>
+          {enemyUnits.map((u) => <UnitCard key={u.id} u={u} />)}
+        </div>
+      </aside>
+      <div className="battle-screen" ref={containerRef} />
+    </div>
+  )
 }
