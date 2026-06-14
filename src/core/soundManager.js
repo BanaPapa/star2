@@ -5,6 +5,12 @@
 const BGM_TRACKS = ['title', 'map', 'battle', 'boss']
 const SFX_TRACKS = ['click', 'confirm', 'victory', 'finisher']
 
+// 트랙이 여러 개인 BGM은 재생 시마다 무작위로 하나를 고른다 (예: 전투 BGM 2종 랜덤 재생).
+const BGM_VARIANTS = {
+  title: ['title_1'],
+  battle: ['battle_1', 'battle_2'],
+}
+
 class SoundManager {
   constructor() {
     this._bgm = null     // HTMLAudioElement — 현재 재생 중인 BGM
@@ -18,15 +24,17 @@ class SoundManager {
   }
 
   playBgm(key) {
-    if (this._bgmKey === key) return // 이미 재생 중
+    const variants = BGM_VARIANTS[key] ?? [key]
+    const file = variants[Math.floor(Math.random() * variants.length)]
+    if (this._bgmKey === file) return // 이미 재생 중
     this.stopBgm()
-    const audio = new Audio(`/assets/bgm_${key}.mp3`)
+    const audio = new Audio(`/assets/bgm_${file}.mp3`)
     audio.loop = true
     audio.volume = this._volume
     // 파일이 없으면 재생 실패 — 조용히 무시
     audio.play().catch(() => {})
     this._bgm = audio
-    this._bgmKey = key
+    this._bgmKey = file
   }
 
   stopBgm() {

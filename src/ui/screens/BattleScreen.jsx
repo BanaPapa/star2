@@ -8,6 +8,9 @@ import { useFleetStore }    from '../../state/useFleetStore'
 import { useResourceStore } from '../../state/useResourceStore'
 import { TERRAIN_TYPES }    from '../../game/systems/terrain'
 
+// 지형 안내 아이콘 목록 — '빈 공간'(특수 효과 없음)은 제외
+const TERRAIN_LEGEND = Object.values(TERRAIN_TYPES).filter((t) => t.id !== 'empty')
+
 export default function BattleScreen({ nodeId, onExit, onEnding, onGameOver }) {
   const containerRef  = useRef(null)
   const gameRef       = useRef(null)
@@ -148,6 +151,7 @@ export default function BattleScreen({ nodeId, onExit, onEnding, onGameOver }) {
 
   // ── UnitCard ──
   const tpColor = (tp) => tp >= 100 ? '#ffd166' : tp >= 50 ? '#4fb8ff' : '#6b7aa8'
+  const tpGlow = (tp) => tp >= 100 ? 'rgba(255,209,102,0.6)' : tp >= 50 ? 'rgba(79,184,255,0.6)' : 'transparent'
 
   function UnitCard({ u }) {
     const hpPct = u.maxHp > 0 ? Math.max(0, (u.hp / u.maxHp) * 100) : 0
@@ -155,7 +159,7 @@ export default function BattleScreen({ nodeId, onExit, onEnding, onGameOver }) {
     const tpPct = Math.min(100, Math.round((u.tp / 100) * 100))
     const isAlly = u.side === 'ally'
     return (
-      <div className={`bnav-unit${u.dead ? ' bnav-unit--dead' : ''}`}>
+      <div className={`bnav-unit holo-panel holo-panel--tight${u.dead ? ' bnav-unit--dead' : ''}`}>
         <div className="bnav-unit-header">
           <span className="bnav-unit-sprite">{u.sprite}</span>
           <div className="bnav-unit-info">
@@ -167,21 +171,21 @@ export default function BattleScreen({ nodeId, onExit, onEnding, onGameOver }) {
           <div className="bnav-bar-row">
             <span className="bnav-bar-label">HP</span>
             <div className="bnav-bar-track">
-              <div className="bnav-bar-fill" style={{ width: hpPct + '%', background: isAlly ? '#3ad6c4' : '#e23b4e' }} />
+              <div className="bnav-bar-fill" style={{ width: hpPct + '%', background: isAlly ? '#3ad6c4' : '#e23b4e', boxShadow: `0 0 8px ${isAlly ? 'rgba(58,214,196,0.65)' : 'rgba(226,59,78,0.65)'}` }} />
             </div>
             <span className="bnav-bar-val">{u.hp}</span>
           </div>
           <div className="bnav-bar-row">
             <span className="bnav-bar-label">AP</span>
             <div className="bnav-bar-track">
-              <div className="bnav-bar-fill" style={{ width: apPct + '%', background: '#ffd166' }} />
+              <div className="bnav-bar-fill" style={{ width: apPct + '%', background: '#ffd166', boxShadow: '0 0 8px rgba(255,209,102,0.6)' }} />
             </div>
             <span className="bnav-bar-val">{u.ap}</span>
           </div>
           <div className="bnav-bar-row">
             <span className="bnav-bar-label">TP</span>
             <div className="bnav-bar-track">
-              <div className="bnav-bar-fill" style={{ width: tpPct + '%', background: tpColor(u.tp) }} />
+              <div className="bnav-bar-fill" style={{ width: tpPct + '%', background: tpColor(u.tp), boxShadow: `0 0 8px ${tpGlow(u.tp)}` }} />
             </div>
             <span className="bnav-bar-val" style={{ color: tpColor(u.tp) }}>{tpPct}%</span>
           </div>
@@ -203,7 +207,21 @@ export default function BattleScreen({ nodeId, onExit, onEnding, onGameOver }) {
       </aside>
 
       {/* ── 중앙: Phaser 캔버스 ── */}
-      <div className="battle-screen" ref={containerRef} />
+      <div className="battle-screen" ref={containerRef}>
+        {/* 지형 안내 — 지형별 개별 아이콘, 호버 시 해당 지형 설명만 표시 */}
+        <div className="terrain-info-row">
+          {TERRAIN_LEGEND.map((t) => (
+            <div key={t.id} className="terrain-icon-item holo-badge holo-badge--dim" tabIndex={0}>
+              <span className="terrain-icon-glyph">{t.glyph}</span>
+              <div className="terrain-icon-tooltip holo-panel holo-panel--tight">
+                <span className="bnav-terrain-name">{t.label}</span>
+                {t.effect && <span className="bnav-terrain-effect">{t.effect}</span>}
+                <span className="bnav-terrain-desc">{t.desc}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
 
       {/* ── 우측: 적군 패널 + 전투 조작 ── */}
       <aside className="battle-subnav battle-subnav--right">
@@ -253,27 +271,12 @@ export default function BattleScreen({ nodeId, onExit, onEnding, onGameOver }) {
         {/* 적군 유닛 목록 */}
         <div className="bnav-heading bnav-heading--enemy">💀 적군</div>
         {enemyUnits.map((u) => <UnitCard key={u.id} u={u} />)}
-
-        {/* 지형 범례 */}
-        <div className="bnav-terrain-legend">
-          <div className="bnav-terrain-title">지형 안내</div>
-          {Object.values(TERRAIN_TYPES).map((t) => (
-            <div key={t.id} className="bnav-terrain-row">
-              <span className="bnav-terrain-glyph">{t.glyph || '·'}</span>
-              <div className="bnav-terrain-info">
-                <span className="bnav-terrain-name">{t.label}</span>
-                {t.effect && <span className="bnav-terrain-effect">{t.effect}</span>}
-                <span className="bnav-terrain-desc">{t.desc}</span>
-              </div>
-            </div>
-          ))}
-        </div>
       </aside>
 
       {/* ── 도망 모달 ── */}
       {fleeModal && (
         <div className="btl-modal-bg" onClick={() => !fleeModal.result && setFleeModal(null)}>
-          <div className="btl-modal" onClick={(e) => e.stopPropagation()}>
+          <div className="btl-modal holo-panel" onClick={(e) => e.stopPropagation()}>
             {!fleeModal.result ? (
               <>
                 <div className="btl-modal-title">🚀 도주 시도</div>
@@ -308,7 +311,7 @@ export default function BattleScreen({ nodeId, onExit, onEnding, onGameOver }) {
       {/* ── 협상 모달 ── */}
       {negotiateModal && (
         <div className="btl-modal-bg" onClick={() => negotiateModal.step === 'choose' && setNegotiateModal(null)}>
-          <div className="btl-modal" onClick={(e) => e.stopPropagation()}>
+          <div className="btl-modal holo-panel" onClick={(e) => e.stopPropagation()}>
             {negotiateModal.step === 'choose' ? (
               <>
                 <div className="btl-modal-title">🤝 협상 시도</div>
@@ -317,7 +320,7 @@ export default function BattleScreen({ nodeId, onExit, onEnding, onGameOver }) {
                 </p>
                 <div className="btl-modal-options">
                   {/* 크레딧 지불 */}
-                  <div className="btl-option">
+                  <div className="btl-option holo-panel holo-panel--tight">
                     <div className="btl-option-info">
                       <span className="btl-option-name">💰 스텔라크레딧 지불</span>
                       <span className="btl-option-cost">소모: {payAmount} SC (보유: {wallet.sc ?? 0})</span>
@@ -331,7 +334,7 @@ export default function BattleScreen({ nodeId, onExit, onEnding, onGameOver }) {
                   </div>
 
                   {/* 외교적 설득 */}
-                  <div className="btl-option">
+                  <div className="btl-option holo-panel holo-panel--tight">
                     <div className="btl-option-info">
                       <span className="btl-option-name">🎙 외교적 설득</span>
                       <span className="btl-option-cost">소모 없음 · 실패해도 자원 손실 없음</span>
@@ -345,7 +348,7 @@ export default function BattleScreen({ nodeId, onExit, onEnding, onGameOver }) {
 
                   {/* 함선 포기 */}
                   {sacrificeEntry ? (
-                    <div className="btl-option">
+                    <div className="btl-option holo-panel holo-panel--tight">
                       <div className="btl-option-info">
                         <span className="btl-option-name">🚀 함선 양도</span>
                         <span className="btl-option-cost">
@@ -359,7 +362,7 @@ export default function BattleScreen({ nodeId, onExit, onEnding, onGameOver }) {
                       >선택</button>
                     </div>
                   ) : (
-                    <div className="btl-option btl-option--disabled">
+                    <div className="btl-option btl-option--disabled holo-panel holo-panel--tight">
                       <div className="btl-option-info">
                         <span className="btl-option-name">🚀 함선 양도</span>
                         <span className="btl-option-cost">함선이 1척뿐이라 불가</span>

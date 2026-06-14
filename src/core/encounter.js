@@ -20,6 +20,7 @@ function resolveEnemyShip(enemyDef, shipsById, threatLevel = 1) {
   const stats = {}
   for (const key of STAT_KEYS) stats[key] = source[key]
   stats.tpPerTurn = source.tpPerTurn ?? DEFAULT_TP_PER_TURN
+  stats.aiTactic = enemyDef.aiTactic ?? 'aggressive'
 
   if (base) {
     const m = THREAT_BASE + (threatLevel - 1) * THREAT_SCALE_PER_TIER

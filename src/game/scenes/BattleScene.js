@@ -3,9 +3,10 @@ import { computeMovementRange, findPath, manhattanDistance } from '../../core/gr
 import { resolveAttack } from '../../core/combat'
 import { pickTarget, inAttackRange, planApproach } from '../../core/ai'
 import { collectLineTargets } from '../../core/skills'
-import { getEffectiveShip, applyEquipment, getUnitFinishers, xpRewardForVictory, canPromote } from '../../core/growth'
+import { getEffectiveShip, applyEquipment, applyResearchSynergies, getUnitFinishers, xpRewardForVictory, canPromote } from '../../core/growth'
 import { buildEncounterPlacements } from '../../core/encounter'
 import { useFleetStore } from '../../state/useFleetStore'
+import { useResearchStore } from '../../state/useResearchStore'
 import { useResourceStore } from '../../state/useResourceStore'
 import { useProgressStore } from '../../state/useProgressStore'
 import { useDataStore } from '../../state/useDataStore'
@@ -15,32 +16,33 @@ import { getEmojiFallback } from '../../core/assetMap'
 import CutinManager from '../effects/CutinManager'
 import { useBattleStore } from '../../state/useBattleStore'
 
-const COLS = 12
+const COLS = 16
 const ROWS = 10
 let CELL = 80
 
-// 지형 배치 — 각 지형 타입별 [x, y] 좌표 목록
-const ASTEROID_CELLS      = [[5,2],[6,2],[5,3],[8,6],[8,7],[9,7]]
-const DEBRIS_CELLS        = [[3,6],[4,6],[4,7],[7,2],[7,3]]
-const NEBULA_CELLS        = [[2,4],[3,4]]
-const ASTEROID_FIELD_CELLS= [[6,5],[7,5]]
-const MINEFIELD_CELLS     = [[9,2],[10,3]]
-const PLASMA_STORM_CELLS  = [[4,8],[5,8]]
+// 지형 배치 — 각 지형 타입별 [x, y] 좌표 목록 (그리드 확장으로 기존 12열 배치를 +2 시프트)
+const ASTEROID_CELLS      = [[7,2],[8,2],[7,3],[10,6],[10,7],[11,7]]
+const DEBRIS_CELLS        = [[5,6],[6,6],[6,7],[9,2],[9,3]]
+const NEBULA_CELLS        = [[4,4],[5,4]]
+const ASTEROID_FIELD_CELLS= [[8,5],[9,5]]
+const MINEFIELD_CELLS     = [[11,2],[12,3]]
+const PLASMA_STORM_CELLS  = [[6,8],[7,8]]
+const DISTORTION_CELLS    = [[8,3],[9,7]]
 
-function buildTerrainLayout(threatLevel = 1) {
+function buildTerrainLayout(threatLevel = 1, terrainTheme = null) {
   const layout = Array.from({ length: ROWS }, () => new Array(COLS).fill('empty'))
 
   // 위협1-2: 평지 — 소행성 2칸만 (입문, 전략 부담 최소)
   if (threatLevel <= 2) {
-    for (const [x, y] of [[5,4],[5,5]]) layout[y][x] = 'asteroid'
+    for (const [x, y] of [[7,4],[7,5]]) layout[y][x] = 'asteroid'
     return layout
   }
 
   // 위협3-4: 가벼운 지형 — 소행성 + 잔해 + 성운
   if (threatLevel <= 4) {
-    for (const [x, y] of [[5,2],[6,2],[8,6]]) layout[y][x] = 'asteroid'
-    for (const [x, y] of [[3,6],[4,6]])        layout[y][x] = 'debris'
-    for (const [x, y] of [[2,4],[3,4]])        layout[y][x] = 'nebula'
+    for (const [x, y] of [[7,2],[8,2],[10,6]]) layout[y][x] = 'asteroid'
+    for (const [x, y] of [[5,6],[6,6]])        layout[y][x] = 'debris'
+    for (const [x, y] of [[4,4],[5,4]])        layout[y][x] = 'nebula'
     return layout
   }
 
@@ -60,25 +62,34 @@ function buildTerrainLayout(threatLevel = 1) {
   for (const [x, y] of ASTEROID_FIELD_CELLS) layout[y][x] = 'asteroid_field'
   for (const [x, y] of MINEFIELD_CELLS)      layout[y][x] = 'minefield'
   for (const [x, y] of PLASMA_STORM_CELLS)   layout[y][x] = 'plasma_storm'
+
+  // 왜곡 공간 테마(니힐 s4) — 맵 중앙 거점에 공간 왜곡 지대 추가
+  if (terrainTheme === 'distortion') {
+    for (const [x, y] of DISTORTION_CELLS) layout[y][x] = 'distortion'
+  }
   return layout
 }
 
 // 아군 시작 위치 — useFleetStore의 로스터 순서에 그대로 매핑된다(MOD-5: 로스터 기반 생성으로 교체).
+// 그리드 확장(+2열)에 맞춰 +2 시프트.
 const ALLY_START_POSITIONS = [
-  { x: 1, y: 5 },
-  { x: 1, y: 7 },
-  { x: 1, y: 3 },
+  { x: 3, y: 5 },
+  { x: 3, y: 7 },
+  { x: 3, y: 3 },
+  { x: 3, y: 1 },
+  { x: 3, y: 9 },
+  { x: 2, y: 5 },
 ]
 
 // 적 출현 위치 슬롯 — core/encounter.js가 노드의 적 구성을 이 자리에 순서대로 배치한다(MOD-6).
-// 가장 큰 편성(관문 요새 s7: 4기)도 겹치지 않도록 충분히 마련.
+// 가장 큰 편성(니힐 s4: 적 4기 + 보스 1기 = 5기)도 겹치지 않도록 충분히 마련. 그리드 확장(+2열)에 맞춰 +2 시프트.
 const ENEMY_SPAWN_POSITIONS = [
-  { x: 10, y: 2 },
-  { x: 10, y: 7 },
-  { x: 9, y: 4 },
-  { x: 9, y: 5 },
-  { x: 11, y: 3 },
-  { x: 11, y: 6 },
+  { x: 12, y: 2 },
+  { x: 12, y: 7 },
+  { x: 11, y: 4 },
+  { x: 11, y: 5 },
+  { x: 13, y: 3 },
+  { x: 13, y: 6 },
 ]
 
 const SIDE_COLOR = {
@@ -96,14 +107,12 @@ let HP_BAR_WIDTH = CELL * 0.56
 const HP_BAR_HEIGHT = 5
 const HP_BAR_BG_COLOR = 0x1a2030
 
-const DAMAGE_TEXT_COLOR = '#ffd166'
 const MISS_TEXT_COLOR = '#6b7aa8'
 const HEAL_TEXT_COLOR = '#7dffb0'
 const FINISHER_READY_COLOR = '#ffd166'
 const FINISHER_WAIT_COLOR = '#5a6a96'
 const TOGGLE_COLOR = '#8fa3d6'
 
-const STATUS_LABEL_COLOR = '#8fa3d6'
 const ACTED_ALPHA = 0.5
 
 // TP 게이지 "가득 참" 기준값. skills.json의 필살기 발동 조건이 cost.tp = "full"(문자열)로만
@@ -139,7 +148,7 @@ export default class BattleScene extends Phaser.Scene {
     this.onExit = onExit ?? null
     this.onEnding = onEnding ?? null
     this.onGameOver = onGameOver ?? null
-    this.terrain = buildTerrainLayout(node?.threatLevel ?? 1)
+    this.terrain = buildTerrainLayout(node?.threatLevel ?? 1, node?.terrain)
     this.units = []
     this.selected = null
     this.highlighted = new Set()
@@ -303,35 +312,32 @@ export default class BattleScene extends Phaser.Scene {
     // 에이스 필살기 + 전직 함선 고유 필살기를 함께(복수) 보유할 수 있다. 적은 베이스 스탯 그대로.
     const entry = placement.instanceId ? (this.roster.find((e) => e.instanceId === placement.instanceId) ?? null) : null
     // MOD-7: 성장·전직 보너스 위에 장착 무기·모듈(items.json mods)을 추가로 합산한 "최종 실전 스탯".
-    const ship = entry ? applyEquipment(getEffectiveShip(baseShip, entry), entry, this.itemsById) : baseShip
+    // 연구 시너지(useResearchStore.activeSynergyBonus)는 함대 전체 보너스이므로 마지막에 더한다.
+    const ship = entry
+      ? applyResearchSynergies(applyEquipment(getEffectiveShip(baseShip, entry), entry, this.itemsById), useResearchStore.getState().activeSynergyBonus())
+      : baseShip
     const finishers = entry ? getUnitFinishers({ ace, ship: baseShip, entry, allSkills: this.allSkills }) : []
 
     const ring = this.add.circle(0, 0, radius, palette.fill)
     ring.setStrokeStyle(2, palette.ring, 0.9)
     const glyph = this.add.text(0, -4, getEmojiFallback(ship.sprite), { fontSize: '28px' }).setOrigin(0.5)
-    const levelPart = entry ? ` Lv.${ship.level}` : ''
-    const acePart = ace ? ` · 지휘관 ${ace.name}` : ''
-    const labelText = `${ship.name}${levelPart} MOV${ship.mov}${acePart}`
-    const label = this.add
-      .text(0, radius + 8, labelText, {
+
+    // 위쪽 — 레벨만 표시 (적은 레벨 개념이 없어 비워둠)
+    const levelLabel = this.add
+      .text(0, -radius - 8, entry ? `Lv.${ship.level}` : '', {
         fontFamily: 'Share Tech Mono, monospace',
-        fontSize: '11px',
+        fontSize: '12px',
+        fontStyle: 'bold',
         color: palette.label,
       })
-      .setOrigin(0.5, 0)
-    const statusLabel = this.add
-      .text(0, radius + 24, '', {
-        fontFamily: 'Share Tech Mono, monospace',
-        fontSize: '10px',
-        color: STATUS_LABEL_COLOR,
-      })
-      .setOrigin(0.5, 0)
+      .setOrigin(0.5, 1)
 
-    const barY = -radius - 9
+    // 아래쪽 — 에너지(HP) 바만 표시 (AP/TP/실드 등 세부 정보는 사이드패널에서 확인)
+    const barY = radius + 10
     const hpBarBg = this.add.rectangle(-HP_BAR_WIDTH / 2, barY, HP_BAR_WIDTH, HP_BAR_HEIGHT, HP_BAR_BG_COLOR).setOrigin(0, 0.5)
     const hpBarFg = this.add.rectangle(-HP_BAR_WIDTH / 2, barY, HP_BAR_WIDTH, HP_BAR_HEIGHT, palette.ring).setOrigin(0, 0.5)
 
-    const container = this.add.container(px, py, [ring, hpBarBg, hpBarFg, glyph, label, statusLabel])
+    const container = this.add.container(px, py, [ring, hpBarBg, hpBarFg, glyph, levelLabel])
     container.setSize(radius * 2, radius * 2)
     container.setInteractive({ useHandCursor: true })
 
@@ -355,7 +361,6 @@ export default class BattleScene extends Phaser.Scene {
       container,
       ring,
       hpBarFg,
-      statusLabel,
     }
     container.on('pointerdown', (_pointer, _lx, _ly, event) => {
       event?.stopPropagation()
@@ -363,7 +368,6 @@ export default class BattleScene extends Phaser.Scene {
     })
 
     this.units.push(unit)
-    this.refreshUnitStatusLabel(unit)
     return unit
   }
 
@@ -451,7 +455,10 @@ export default class BattleScene extends Phaser.Scene {
     this.selected = unit
     unit.ring.setStrokeStyle(3, SELECT_RING_COLOR, 1)
 
-    const range = computeMovementRange({ x: unit.gridX, y: unit.gridY }, unit.ship.mov, (cx, cy) =>
+    // 이동 가능 범위는 MOV와 남은 AP 중 더 작은 쪽으로 — 한 칸 이동에 AP 1을 소모하므로
+    // 남은 AP보다 멀리 이동할 수는 없다.
+    const moveRange = Math.min(unit.ship.mov, unit.ap)
+    const range = computeMovementRange({ x: unit.gridX, y: unit.gridY }, moveRange, (cx, cy) =>
       this.isPassable(cx, cy),
     )
     for (const { x, y } of range) {
@@ -462,7 +469,7 @@ export default class BattleScene extends Phaser.Scene {
     this.refreshActionMenu()
     this.refreshHud(
       `선택: ${unit.ship.name} (MOV ${unit.ship.mov} · AP ${unit.ap}/${unit.maxAp}) — 이동 가능 ${range.length}칸. ` +
-        `칸을 클릭하면 이동(AP -1), 사거리 안의 적을 클릭하면 공격(AP -1)합니다.`,
+        `칸을 클릭하면 이동(이동한 칸 수만큼 AP 소모), 사거리 안의 적을 클릭하면 공격(AP -1)합니다.`,
     )
   }
 
@@ -624,7 +631,6 @@ export default class BattleScene extends Phaser.Scene {
     this.busy = true
 
     unit.tp = 0
-    this.refreshUnitStatusLabel(unit)
 
     this.cutinManager.play({
       ace: presenter,
@@ -658,7 +664,7 @@ export default class BattleScene extends Phaser.Scene {
       }
       if (effect.shield) {
         target.shield = (target.shield ?? 0) + effect.shield
-        this.refreshUnitStatusLabel(target)
+        this.showFloatingText(target, `🛡+${effect.shield}`, '#7dd3ff')
       }
     }
     const parts = []
@@ -693,8 +699,10 @@ export default class BattleScene extends Phaser.Scene {
         continue
       }
 
+      this.fireProjectile(unit, target)
       const dealt = this.applyDamageWithShield(target, result.damage)
-      this.showFloatingText(target, `-${dealt}`, DAMAGE_TEXT_COLOR)
+      this.playHitImpact(target, { crit: true })
+      this.showDamagePopup(target, dealt)
       if (effect.apDebuff) target.apDebuff = (target.apDebuff ?? 0) + effect.apDebuff
       const lethal = target.hp <= 0
       if (lethal) this.destroyUnit(target)
@@ -720,7 +728,6 @@ export default class BattleScene extends Phaser.Scene {
     const toHp = rawDamage - toShield
     unit.hp = Math.max(0, unit.hp - toHp)
     this.updateHpBar(unit)
-    this.refreshUnitStatusLabel(unit)
     return toHp
   }
 
@@ -792,7 +799,8 @@ export default class BattleScene extends Phaser.Scene {
       unit.gridX = targetX
       unit.gridY = targetY
       const destTerrain = getTerrain(this.terrain[targetY][targetX])
-      this.spendAp(unit, 1 + (destTerrain.movCost ?? 0))
+      const tilesMoved = path.length - 1
+      this.spendAp(unit, tilesMoved + (destTerrain.movCost ?? 0))
       this.applyEntryDamage(unit, destTerrain)
       this.busy = false
       this.refreshHud()
@@ -835,44 +843,196 @@ export default class BattleScene extends Phaser.Scene {
       onComplete?.()
     }
 
-    if (!result.hit) {
-      this.showFloatingText(defender, '회피!', MISS_TEXT_COLOR, finish)
-      this.refreshHud(`${attacker.ship.name} → ${defender.ship.name} : 빗나감! (명중률 ${chancePct}%)`)
-      return
-    }
-
-    defender.hp = Math.max(0, defender.hp - result.damage)
-    this.updateHpBar(defender)
-
-    const hitColor  = isCrit ? '#ff6b35' : DAMAGE_TEXT_COLOR
-    const hitLabel  = isCrit ? `💥${result.damage}!` : `-${result.damage}`
-    const bonusTxt  = [isFlank ? '측면' : null, isCrit ? '크리티컬!' : null].filter(Boolean).join(' · ')
-    const bonusPart = bonusTxt ? ` [${bonusTxt}]` : ''
-
-    this.showFloatingText(defender, hitLabel, hitColor, () => {
-      if (result.lethal) {
-        this.destroyUnit(defender)
-        // 킬 시 AP +1 반환 (아군만) — 추격·연속 제거의 손맛
-        if (attacker.side === 'ally' && attacker.ap < attacker.maxAp) {
-          attacker.ap = Math.min(attacker.maxAp, attacker.ap + 1)
-          this.showFloatingText(attacker, '⚡ AP+1', HEAL_TEXT_COLOR)
-          this.refreshUnitStatusLabel(attacker)
-          this.updateUnitAvailability(attacker)
-        }
-      } else {
-        this.checkBossPhaseTransition(defender)
+    // 발사체(빔) 연출이 도착한 뒤 명중/회피 판정 결과를 적용한다.
+    this.fireProjectile(attacker, defender, () => {
+      if (!result.hit) {
+        this.showFloatingText(defender, '회피!', MISS_TEXT_COLOR, finish)
+        this.refreshHud(`${attacker.ship.name} → ${defender.ship.name} : 빗나감! (명중률 ${chancePct}%)`)
+        return
       }
-      finish()
+
+      defender.hp = Math.max(0, defender.hp - result.damage)
+      this.updateHpBar(defender)
+      this.playHitImpact(defender, { crit: isCrit })
+
+      const bonusTxt  = [isFlank ? '측면' : null, isCrit ? '크리티컬!' : null].filter(Boolean).join(' · ')
+      const bonusPart = bonusTxt ? ` [${bonusTxt}]` : ''
+
+      this.showDamagePopup(defender, result.damage, { crit: isCrit, onComplete: () => {
+        if (result.lethal) {
+          this.destroyUnit(defender)
+          // 킬 시 AP +1 반환 (아군만) — 추격·연속 제거의 손맛
+          if (attacker.side === 'ally' && attacker.ap < attacker.maxAp) {
+            attacker.ap = Math.min(attacker.maxAp, attacker.ap + 1)
+            this.showFloatingText(attacker, '⚡ AP+1', HEAL_TEXT_COLOR)
+            this.updateUnitAvailability(attacker)
+          }
+        } else {
+          this.checkBossPhaseTransition(defender)
+        }
+        finish()
+      }})
+
+      if (result.lethal) {
+        this.refreshHud(
+          `${attacker.ship.name} → ${defender.ship.name} : 명중! ${result.damage} 데미지로 격파!${bonusPart} (명중률 ${chancePct}%)`,
+        )
+      } else {
+        this.refreshHud(
+          `${attacker.ship.name} → ${defender.ship.name} : 명중! ${result.damage} 데미지${bonusPart} (남은 HP ${defender.hp}/${defender.maxHp}, 명중률 ${chancePct}%)`,
+        )
+      }
+    })
+  }
+
+  // 공격 발사체(빔) 연출 — 공격자에서 대상까지 빛줄기가 빠르게 뻗어나간 뒤 도착 시 onArrive로 타격 처리를 이어간다.
+  fireProjectile(attacker, target, onArrive) {
+    const from = { x: attacker.container.x, y: attacker.container.y }
+    const to = { x: target.container.x, y: target.container.y }
+    const color = SIDE_COLOR[attacker.side].ring
+
+    const trail = this.add.graphics().setDepth(15)
+    const bolt = this.add.circle(from.x, from.y, CELL * 0.1, color, 1).setDepth(16)
+    bolt.setBlendMode(Phaser.BlendModes.ADD)
+
+    const dist = Phaser.Math.Distance.Between(from.x, from.y, to.x, to.y)
+    const duration = Phaser.Math.Clamp(dist * 1.1, 90, 260)
+
+    this.tweens.add({
+      targets: bolt,
+      x: to.x,
+      y: to.y,
+      duration,
+      ease: 'Cubic.easeIn',
+      onUpdate: () => {
+        trail.clear()
+        trail.lineStyle(4, color, 0.75)
+        trail.beginPath()
+        trail.moveTo(from.x, from.y)
+        trail.lineTo(bolt.x, bolt.y)
+        trail.strokePath()
+      },
+      onComplete: () => {
+        bolt.destroy()
+        this.tweens.add({
+          targets: trail,
+          alpha: 0,
+          duration: 120,
+          ease: 'Cubic.easeOut',
+          onComplete: () => trail.destroy(),
+        })
+        onArrive?.()
+      },
+    })
+  }
+
+  // 피격 임팩트 — 화면 전체가 아닌 맞은 유닛만 짧게 흔들리고, 충돌 지점에 플래시가 번쩍인다.
+  // 크리티컬/필살기 명중은 진폭·플래시를 키워 더 강한 타격감을 준다.
+  playHitImpact(unit, { crit = false } = {}) {
+    const container = unit.container
+    const baseX = container.x
+    const baseY = container.y
+    const amp = crit ? 10 : 6
+    const offsets = crit
+      ? [[amp, -amp * 0.4], [-amp, amp * 0.4], [amp * 0.6, -amp * 0.2], [-amp * 0.6, 0], [0, 0]]
+      : [[amp, 0], [-amp, 0], [amp * 0.5, 0], [0, 0]]
+
+    let i = 0
+    const step = () => {
+      if (i >= offsets.length) return
+      const [dx, dy] = offsets[i]
+      this.tweens.add({
+        targets: container,
+        x: baseX + dx,
+        y: baseY + dy,
+        duration: 30,
+        onComplete: () => { i += 1; step() },
+      })
+    }
+    step()
+
+    const flashColor = crit ? 0xff6b35 : 0xffffff
+    const flash = this.add.circle(0, 0, CELL * (crit ? 0.46 : 0.38), flashColor, 0.85)
+    container.add(flash)
+    this.tweens.add({
+      targets: flash,
+      scale: crit ? 1.7 : 1.3,
+      alpha: 0,
+      duration: crit ? 260 : 180,
+      ease: 'Cubic.easeOut',
+      onComplete: () => flash.destroy(),
+    })
+  }
+
+  // 피격 데미지 팝업 — 액션 게임처럼 큼지막한 숫자가 튀어나오듯 표시된다.
+  // 크리티컬 명중 시 글자가 한층 더 커지고 "CRITICAL!" 라벨이 함께 떠오른다.
+  showDamagePopup(unit, amount, { crit = false, onComplete } = {}) {
+    const x = unit.container.x
+    const y = unit.container.y - CELL * 0.5
+    const fontSize = crit ? 92 : 60
+    const color = crit ? '#ff6b35' : '#ffe066'
+
+    const numberText = this.add
+      .text(x, y, `-${amount}`, {
+        fontFamily: 'Bangers, "Share Tech Mono", monospace',
+        fontSize: `${fontSize}px`,
+        color,
+        stroke: '#1a0a14',
+        strokeThickness: crit ? 10 : 7,
+      })
+      .setOrigin(0.5)
+      .setDepth(20)
+      .setScale(crit ? 2.4 : 1.6)
+
+    this.tweens.add({
+      targets: numberText,
+      scale: 1,
+      duration: 140,
+      ease: 'Back.easeOut',
+    })
+    this.tweens.add({
+      targets: numberText,
+      y: y - (crit ? 90 : 60),
+      alpha: 0,
+      duration: 700,
+      delay: 280,
+      ease: 'Cubic.easeOut',
+      onComplete: () => {
+        numberText.destroy()
+        onComplete?.()
+      },
     })
 
-    if (result.lethal) {
-      this.refreshHud(
-        `${attacker.ship.name} → ${defender.ship.name} : 명중! ${result.damage} 데미지로 격파!${bonusPart} (명중률 ${chancePct}%)`,
-      )
-    } else {
-      this.refreshHud(
-        `${attacker.ship.name} → ${defender.ship.name} : 명중! ${result.damage} 데미지${bonusPart} (남은 HP ${defender.hp}/${defender.maxHp}, 명중률 ${chancePct}%)`,
-      )
+    if (crit) {
+      const critText = this.add
+        .text(x, y - 84, 'CRITICAL!', {
+          fontFamily: 'Bangers, "Share Tech Mono", monospace',
+          fontSize: '44px',
+          color: '#ff3b30',
+          stroke: '#330000',
+          strokeThickness: 8,
+        })
+        .setOrigin(0.5)
+        .setDepth(20)
+        .setScale(0.3)
+        .setAlpha(0)
+
+      this.tweens.add({
+        targets: critText,
+        scale: 1,
+        alpha: 1,
+        duration: 160,
+        ease: 'Back.easeOut',
+      })
+      this.tweens.add({
+        targets: critText,
+        y: critText.y - 50,
+        alpha: 0,
+        duration: 600,
+        delay: 360,
+        ease: 'Cubic.easeOut',
+        onComplete: () => critText.destroy(),
+      })
     }
   }
 
@@ -966,8 +1126,10 @@ export default class BattleScene extends Phaser.Scene {
     this.busy = true
 
     for (const ally of allies) {
+      this.fireProjectile(unit, ally)
       const dealt = this.applyDamageWithShield(ally, rawDamage)
-      this.showFloatingText(ally, `-${dealt}`, DAMAGE_TEXT_COLOR)
+      this.playHitImpact(ally, { crit: false })
+      this.showDamagePopup(ally, dealt)
     }
 
     this.time.delayedCall(700, () => {
@@ -1054,7 +1216,7 @@ export default class BattleScene extends Phaser.Scene {
         : [`"${this.node.name}" 정복! 인접한 다음 별계로 가는 길이 열렸습니다.`]
       : []
 
-    // MOD-10: 레이븐 영입 선택지 — s6 정복 시 1회만 제공
+    // MOD-10: 레이븐 영입 선택지 — s3 정복 시 1회만 제공
     const endActions = this.buildEndActions()
     if (this.node?.recruit) {
       const aceId = this.node.recruit
@@ -1107,7 +1269,17 @@ export default class BattleScene extends Phaser.Scene {
     const btn = this.add.text(cx, cy + 60, '🔄 처음부터 다시 시작', {
       fontFamily: 'Share Tech Mono, monospace', fontSize: '18px', fontStyle: 'bold', color: '#ffd166',
     }).setOrigin(0.5).setDepth(301).setInteractive({ useHandCursor: true })
-    btn.on('pointerdown', () => this.onGameOver?.())
+
+    // 엔터키로도 재시작 가능 — 클릭 또는 엔터 중 먼저 발생한 쪽으로 한 번만 진행한다.
+    const onEnter = () => {
+      this.input.keyboard.off('keydown-ENTER', onEnter)
+      this.onGameOver?.()
+    }
+    this.input.keyboard.on('keydown-ENTER', onEnter)
+    btn.on('pointerdown', () => {
+      this.input.keyboard.off('keydown-ENTER', onEnter)
+      this.onGameOver?.()
+    })
     this.tweens.add({ targets: btn, alpha: 0.4, duration: 600, yoyo: true, repeat: -1 })
   }
 
@@ -1146,6 +1318,13 @@ export default class BattleScene extends Phaser.Scene {
       .setOrigin(0.5, 0)
       .setDepth(301)
 
+    // 엔터키 = 첫 번째(기본) 선택지 — 클릭 또는 엔터 중 먼저 발생한 쪽으로 한 번만 진행한다.
+    const onEnter = () => {
+      this.input.keyboard.off('keydown-ENTER', onEnter)
+      actions[0]?.onClick()
+    }
+    if (actions.length > 0) this.input.keyboard.on('keydown-ENTER', onEnter)
+
     const buttonColors = ['#ffd166', '#3ad6c4']
     const buttons = actions.map((action, index) => {
       const btn = this.add
@@ -1161,6 +1340,7 @@ export default class BattleScene extends Phaser.Scene {
 
       btn.on('pointerdown', (_pointer, _lx, _ly, event) => {
         event?.stopPropagation()
+        this.input.keyboard.off('keydown-ENTER', onEnter)
         action.onClick()
       })
       this.tweens.add({ targets: btn, alpha: 0.4, duration: 480, yoyo: true, repeat: -1 })
@@ -1174,14 +1354,12 @@ export default class BattleScene extends Phaser.Scene {
   // 행동(이동=1, 공격=1) 시 AP를 소모한다 — dev_plan_guide.md MOD-3 요청 예시의 비용 규칙을 그대로 따른다.
   spendAp(unit, cost) {
     unit.ap = Math.max(0, unit.ap - cost)
-    this.refreshUnitStatusLabel(unit)
     this.updateUnitAvailability(unit)
   }
 
   // ships.json의 tpPerTurn만큼 턴마다 충전한다(밸런싱 수치는 데이터 그대로 사용).
   chargeTp(unit) {
     unit.tp = Math.min(TP_MAX, unit.tp + unit.tpPerTurn)
-    this.refreshUnitStatusLabel(unit)
   }
 
   // 턴 시작 시 AP를 최대치로 채운다. area_emp의 effect.apDebuff(예: "다음 턴 행동 -1AP", duration:1)는
@@ -1195,14 +1373,7 @@ export default class BattleScene extends Phaser.Scene {
     }
     unit.ap = unit.maxAp
     unit.aoeFiredThisTurn = false // MOD-11: 보스 2페이즈 광역 공격 플래그 초기화
-    this.refreshUnitStatusLabel(unit)
     this.updateUnitAvailability(unit)
-  }
-
-  refreshUnitStatusLabel(unit) {
-    const tpPct = Math.round((unit.tp / TP_MAX) * 100)
-    const shieldPart = unit.shield > 0 ? ` · 실드 ${unit.shield}` : ''
-    unit.statusLabel.setText(`AP ${unit.ap}/${unit.maxAp} · TP ${tpPct}%${shieldPart}`)
   }
 
   // AP가 소진된 유닛은 더 이상 행동할 수 없음을 시각적으로 표시한다(반투명 처리).
@@ -1332,7 +1503,7 @@ export default class BattleScene extends Phaser.Scene {
         return
       }
       const allies = this.units.filter((u) => u.side === 'ally')
-      const target = pickTarget(unit.ship.id, allies, this.combatRules.counterMultiplier)
+      const target = pickTarget(unit, allies, this.combatRules.counterMultiplier)
       if (!target) {
         onDone()
         return
@@ -1373,7 +1544,8 @@ export default class BattleScene extends Phaser.Scene {
       unit.gridX = targetX
       unit.gridY = targetY
       const destTerrain = getTerrain(this.terrain[targetY][targetX])
-      this.spendAp(unit, 1 + (destTerrain.movCost ?? 0))
+      const tilesMoved = path.length - 1
+      this.spendAp(unit, tilesMoved + (destTerrain.movCost ?? 0))
       this.applyEntryDamage(unit, destTerrain)
       this.busy = false
       onDone()
@@ -1408,7 +1580,7 @@ export default class BattleScene extends Phaser.Scene {
         return
       }
       const enemies = this.units.filter((u) => u.side === 'enemy')
-      const target = pickTarget(unit.ship.id, enemies, this.combatRules.counterMultiplier)
+      const target = pickTarget(unit, enemies, this.combatRules.counterMultiplier)
       if (!target) {
         onDone()
         return

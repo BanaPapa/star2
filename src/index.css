@@ -1,13 +1,18 @@
 :root {
   --bg-0: #060818;
   --panel: rgba(18, 26, 58, 0.72);
+  --panel-2: rgba(10, 16, 42, 0.85);
   --cyan: #3ad6c4;
   --blue: #4fb8ff;
   --gold: #ffd166;
+  --amber: #ff7a3c;
+  --red: #e23b4e;
   --text: #cdd8f4;
   --dim: #6b7aa8;
   --line: rgba(79, 184, 255, 0.22);
+  --line-strong: rgba(79, 184, 255, 0.5);
   --kr: 'IBM Plex Sans KR', system-ui, sans-serif;
+  --disp: 'Chakra Petch', var(--kr), sans-serif;
   --mono: 'Share Tech Mono', ui-monospace, Consolas, monospace;
 
   color-scheme: dark;
@@ -35,4 +40,173 @@ code {
   background: rgba(255, 255, 255, 0.06);
   padding: 1px 6px;
   border-radius: 3px;
+}
+
+/* ════════════════════════════════════════════════════════════════
+   홀로그램 UI 시스템 — 반투명 글래스 패널 + 네온 글로우 (전 화면 공통)
+   ════════════════════════════════════════════════════════════════ */
+
+/* 글래스 패널: 반투명 배경 + 상단 시안 셰인 + 네온 코너 브래킷 */
+.holo-panel {
+  position: relative;
+  background:
+    linear-gradient(180deg, rgba(79, 184, 255, 0.07), transparent 55%),
+    var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.holo-panel::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  pointer-events: none;
+  background-repeat: no-repeat;
+  background-image:
+    linear-gradient(var(--cyan), var(--cyan)), linear-gradient(var(--cyan), var(--cyan)),
+    linear-gradient(var(--cyan), var(--cyan)), linear-gradient(var(--cyan), var(--cyan)),
+    linear-gradient(var(--cyan), var(--cyan)), linear-gradient(var(--cyan), var(--cyan)),
+    linear-gradient(var(--cyan), var(--cyan)), linear-gradient(var(--cyan), var(--cyan));
+  background-size: 13px 2px, 2px 13px, 13px 2px, 2px 13px, 13px 2px, 2px 13px, 13px 2px, 2px 13px;
+  background-position: 0 0, 0 0, 100% 0, 100% 0, 0 100%, 0 100%, 100% 100%, 100% 100%;
+  opacity: 0.85;
+  filter: drop-shadow(0 0 3px rgba(58, 214, 196, 0.7));
+}
+
+/* 작은 요소용 — 코너 브래킷 축소 */
+.holo-panel--tight::after {
+  background-size: 8px 2px, 2px 8px, 8px 2px, 2px 8px, 8px 2px, 2px 8px, 8px 2px, 2px 8px;
+}
+
+/* 금색(주의/강조) 톤 패널 */
+.holo-panel--gold {
+  border-color: rgba(255, 209, 102, 0.4);
+}
+
+.holo-panel--gold::after {
+  background-image:
+    linear-gradient(var(--gold), var(--gold)), linear-gradient(var(--gold), var(--gold)),
+    linear-gradient(var(--gold), var(--gold)), linear-gradient(var(--gold), var(--gold)),
+    linear-gradient(var(--gold), var(--gold)), linear-gradient(var(--gold), var(--gold)),
+    linear-gradient(var(--gold), var(--gold)), linear-gradient(var(--gold), var(--gold));
+  filter: drop-shadow(0 0 3px rgba(255, 209, 102, 0.7));
+}
+
+/* 섹션 헤더 — 시안 다이아몬드 불릿 + 자간 넓은 라벨 */
+.holo-h {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--cyan);
+}
+
+.holo-h::before {
+  content: '';
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  background: var(--cyan);
+  box-shadow: 0 0 8px var(--cyan);
+  transform: rotate(45deg);
+}
+
+/* 글로우 아이콘 뱃지 — 정사각/원형 아이콘 컨테이너 */
+.holo-badge {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: 1px solid var(--cyan);
+  border-radius: 10px;
+  background: radial-gradient(circle at 50% 40%, rgba(58, 214, 196, 0.28), rgba(58, 214, 196, 0.04));
+  box-shadow: 0 0 12px rgba(58, 214, 196, 0.35), inset 0 0 10px rgba(58, 214, 196, 0.15);
+}
+
+.holo-badge--circle {
+  border-radius: 50%;
+}
+
+.holo-badge--gold {
+  border-color: var(--gold);
+  background: radial-gradient(circle at 50% 40%, rgba(255, 209, 102, 0.28), rgba(255, 209, 102, 0.04));
+  box-shadow: 0 0 12px rgba(255, 209, 102, 0.35), inset 0 0 10px rgba(255, 209, 102, 0.15);
+}
+
+.holo-badge--dim {
+  border-color: var(--line);
+  background: rgba(255, 255, 255, 0.03);
+  box-shadow: none;
+}
+
+/* 글로우 프로그레스 바 */
+.holo-bar {
+  position: relative;
+  height: 8px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+
+.holo-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 5px;
+  background: linear-gradient(90deg, var(--cyan), var(--blue));
+  box-shadow: 0 0 10px rgba(58, 214, 196, 0.65);
+  transition: width 0.25s ease;
+}
+
+.holo-bar-fill--gold {
+  background: linear-gradient(90deg, var(--gold), #ffb347);
+  box-shadow: 0 0 10px rgba(255, 209, 102, 0.6);
+}
+
+.holo-bar-fill--red {
+  background: linear-gradient(90deg, var(--amber), var(--red));
+  box-shadow: 0 0 10px rgba(226, 59, 78, 0.55);
+}
+
+/* 필 태그 / 칩 */
+.holo-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--dim);
+  background: rgba(255, 255, 255, 0.03);
+  white-space: nowrap;
+}
+
+.holo-pill--cyan {
+  color: #06181c;
+  background: var(--cyan);
+  border-color: var(--cyan);
+  box-shadow: 0 0 10px rgba(58, 214, 196, 0.45);
+}
+
+.holo-pill--gold {
+  color: #1c1408;
+  background: var(--gold);
+  border-color: var(--gold);
+  box-shadow: 0 0 10px rgba(255, 209, 102, 0.45);
+}
+
+.holo-pill--outline-gold {
+  color: var(--gold);
+  border-color: rgba(255, 209, 102, 0.45);
+  background: rgba(255, 209, 102, 0.08);
 }

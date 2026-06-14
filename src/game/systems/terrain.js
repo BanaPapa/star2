@@ -55,6 +55,13 @@ export const TERRAIN_TYPES = {
     desc: '에너지 폭풍 — 매 턴 시작 시 HP -3%, 이 칸을 노리는 공격자 ACC -10.',
     effect: '매 턴 HP -3% / 공격자 ACC -10',
   },
+  distortion: {
+    id: 'distortion', label: '공간 왜곡', passable: true,
+    evaMod: 10, accMod: -25, entryDamage: 0, movCost: 0, periodicDamage: 5,
+    color: 0x2a1040, glyph: '🌀',
+    desc: '뒤틀린 공간 — 방어자 EVA +10, 이 칸을 노리는 공격자 ACC -25, 매 턴 시작 시 HP -5%.',
+    effect: 'EVA +10 / 공격자 ACC -25 / 매 턴 HP -5%',
+  },
 }
 
 export function getTerrain(id) {

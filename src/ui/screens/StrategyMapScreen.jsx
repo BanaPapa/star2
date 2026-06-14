@@ -13,14 +13,6 @@ import './StrategyMapScreen.css'
 const RESOURCE_NAMES = { sc: '스텔라크레딧', ti: '티타늄', ec: '에너지크리스탈', dm: '다크매터' }
 const RESOURCE_ICONS = { sc: '💰', ti: '🔩', ec: '💎', dm: '🌑' }
 
-// 상단 뷰 토글 — 기본(가장 깔끔) / 위험도 / 자원 / 점령 현황 오버레이
-const MAP_VIEWS = [
-  { id: 'default',  icon: '🌌', label: '기본',     caption: null },
-  { id: 'risk',     icon: '⚠️', label: '위험도',   caption: '보이드 군세 위협도가 높을수록 별계 외곽선이 붉고 두꺼워집니다.' },
-  { id: 'resource', icon: '⛏️', label: '자원',     caption: '채굴 가능한 별계에 자원 종류와 예상 수량이 표시됩니다.' },
-  { id: 'conquest', icon: '🚩', label: '점령 현황', caption: '점령 상태(현재·정복·진입 가능·잠김)를 색상과 아이콘으로 구분합니다.' },
-]
-
 const PEACE_MESSAGES = [
   '함대가 잠시 휴식을 취했습니다. 승무원들의 사기가 올랐습니다.',
   '성간 공간의 고요함 속에서 잠시 숨을 고릅니다.',
@@ -29,15 +21,11 @@ const PEACE_MESSAGES = [
 ]
 
 const SYS_POS = {
-  s0: { x: 7,  y: 50 },
-  s1: { x: 22, y: 20 },
-  s2: { x: 30, y: 75 },
-  s3: { x: 48, y: 48 },
-  s4: { x: 62, y: 14 },
-  s5: { x: 63, y: 83 },
-  s6: { x: 76, y: 48 },
-  s7: { x: 87, y: 22 },
-  s8: { x: 93, y: 72 },
+  s0: { x: 8,  y: 50 },
+  s1: { x: 28, y: 22 },
+  s2: { x: 50, y: 65 },
+  s3: { x: 72, y: 25 },
+  s4: { x: 92, y: 55 },
 }
 
 const ROLE_ICON = { home: '🏠', mission: '🪐', boss: '👹' }
@@ -100,6 +88,13 @@ const MAP_EVENT_ICON  = { merchant: '🛒', derelict: '🛰️' }
 const MAP_EVENT_GLOW  = { merchant: 'rgba(255,209,102,', derelict: 'rgba(124,255,178,' }
 const MAP_EVENT_COUNT = 6
 
+// 위협도(threatLevel 1~7+)에 따른 색상 단계 — 낮음(시안)→보통(녹/노랑)→높음(주황)→매우높음(빨강/보라)
+const THREAT_COLOR_RGB = ['58,214,196', '126,231,135', '255,209,102', '255,169,77', '255,107,107', '230,73,79', '192,132,252']
+function threatColorRgb(level) {
+  const idx = Math.min(THREAT_COLOR_RGB.length, Math.max(1, Math.round(level ?? 1))) - 1
+  return THREAT_COLOR_RGB[idx]
+}
+
 function spawnMapEvent(idBase) {
   for (let tries = 0; tries < 40; tries++) {
     const x = 5 + Math.random() * 90
@@ -157,14 +152,6 @@ function briefReward(node, conquered) {
 function moveApCost(fromPos, toPos) {
   const d = Math.hypot(toPos.x - fromPos.x, toPos.y - fromPos.y)
   return Math.max(1, Math.round(d / 10))
-}
-
-// 턴 허브 "이벤트 확인"용 — 플레이어 기준 대상의 8방위(화면 y축은 아래로 증가하므로 "북" = -y)
-const COMPASS_LABELS = ['북', '북동', '동', '남동', '남', '남서', '서', '북서']
-function compassDirection(dx, dy) {
-  const angle = Math.atan2(dx, -dy)
-  const idx = Math.round(((angle * 180 / Math.PI + 360) % 360) / 45) % 8
-  return COMPASS_LABELS[idx]
 }
 
 // 하단 액션바용 — 함대 핵심 정보(리더/전력/이동력/TP) 요약. 캐릭터성 강조를 위해
@@ -255,7 +242,7 @@ function eliteGuardCount(node) {
 }
 
 // 모항 안전지대 바로 바깥(반경 +2~+22%)에 배치되는 튜토리얼용 최약체 호위 함대
-// nodeRef는 s1(여명 성역, threatLevel 1, void_scout) 데이터를 그대로 재사용한다.
+// nodeRef는 s1(아르카디아) 데이터를 그대로 재사용한다.
 // 시작 지점 주변 체감 밀도를 위해 기존 대비 2배로 증원
 const HOME_GUARD_COUNT = 12
 
@@ -383,8 +370,6 @@ export default function StrategyMapScreen({ onEnterBattle, onGameOver }) {
   // 함대 자동 이동 상태
   const [fleetMode,     setFleetMode]     = useState('manual') // 'manual' | 'moving' | 'patrolling'
   const [moveTarget,    setMoveTarget]    = useState(null)     // 목적지 별계 id
-  // 상단 뷰 토글 — 맵 위에 표시할 오버레이 종류 (기본/위험도/자원/점령 현황)
-  const [mapView,       setMapView]       = useState('default')
 
   // playerPos/eventModal → ref 동기화 (인터벌 콜백이 deps 없이 최신 상태 참조)
   useEffect(() => { playerPosRef.current = playerPos }, [playerPos])
@@ -943,7 +928,17 @@ export default function StrategyMapScreen({ onEnterBattle, onGameOver }) {
       // mapBosses의 좌표가 곧 이 중심점이므로, 이 위치 = 정복 전투 발동 지점이 된다.
       // 일반 적 아이콘(👾🛸💀)과 비슷한 크기로 표시해, 행성 자체로 오인되지 않도록 한다.
       if (boss && sys.role !== 'boss') {
-        ctx.font = `${28 + (boss.threatLevel ?? 1) * 1.5}px Arial`
+        const bossSize = 28 + (boss.threatLevel ?? 1) * 1.5
+        const bossGlowR = bossSize * 0.9
+        const bossGlow = ctx.createRadialGradient(px, py, 0, px, py, bossGlowR)
+        bossGlow.addColorStop(0, `rgba(${threatColorRgb(boss.threatLevel)},0.4)`)
+        bossGlow.addColorStop(1, `rgba(${threatColorRgb(boss.threatLevel)},0)`)
+        ctx.fillStyle = bossGlow
+        ctx.beginPath()
+        ctx.arc(px, py, bossGlowR, 0, Math.PI * 2)
+        ctx.fill()
+
+        ctx.font = `${bossSize}px Arial`
         ctx.fillText('👹', px, py)
       }
       ctx.globalAlpha = 1
@@ -963,61 +958,10 @@ export default function StrategyMapScreen({ onEnterBattle, onGameOver }) {
         ctx.textBaseline = 'middle'
         ctx.fillText(miningIcon, px - 56, py - 56)
       }
-
-      // ─── 상단 뷰 토글 오버레이 — '기본' 보기는 위 표시만으로 충분하므로 추가 표시 없음 ───
-      if (mapView === 'risk' && sys.role !== 'home' && !isConq) {
-        // 위험도 보기 — 위협 레벨을 작은 경고 배지(레드 원 + 숫자)로 표시 (외곽선 범위 표시 대신 배지 사용)
-        const lv = sys.threatLevel ?? 1
-        const ratio = Math.min(1, lv / 7)
-        const bx = px + 60, by = py + 60
-        ctx.fillStyle = `rgba(220,38,38,${0.6 + ratio * 0.3})`
-        ctx.beginPath()
-        ctx.arc(bx, by, 22, 0, Math.PI * 2)
-        ctx.fill()
-        ctx.font = 'bold 22px sans-serif'
-        ctx.fillStyle = '#fff'
-        ctx.textAlign = 'center'
-        ctx.textBaseline = 'middle'
-        ctx.fillText(String(lv), bx, by + 1)
-      }
-
-      if (mapView === 'resource') {
-        // 자원 보기 — 자원 종류 + 예상 수량을 단색 텍스트로만 표시 (외곽선/글로우 없음)
-        const lines = []
-        if (sys.mining) {
-          const rem = miningDeposits[sys.id] ?? sys.mining.deposit
-          if (rem > 0) {
-            const dev = isDeveloped(sys.id)
-            const eff = dev && sys.mining.devYieldBonus ? sys.mining.yield + sys.mining.devYieldBonus : sys.mining.yield
-            lines.push(`${RESOURCE_ICONS[sys.mining.resource] ?? '⛏'} +${eff} (잔여 ${rem})`)
-          }
-        }
-        if (sys.devMining && isDeveloped(sys.id)) {
-          const rem = miningDeposits[sys.id + '_dev'] ?? sys.devMining.deposit
-          if (rem > 0) {
-            lines.push(`${RESOURCE_ICONS[sys.devMining.resource] ?? '⛏'} +${sys.devMining.yield} (잔여 ${rem})`)
-          }
-        }
-        ctx.font = 'bold 24px sans-serif'
-        ctx.fillStyle = '#ffd166'
-        ctx.textAlign = 'center'
-        ctx.textBaseline = 'top'
-        lines.forEach((line, i) => ctx.fillText(line, px, py + 100 + i * 32))
-      }
-
-      if (mapView === 'conquest') {
-        // 점령 현황 보기 — 상태(현재/정복/진입 가능/잠김) 아이콘만 표시 (외곽선은 기본 보기에서 이미 표현됨)
-        const ICONS = { current: '📍', conquered: '✅', reachable: '🚀', locked: '🔒' }
-        ctx.font = '30px sans-serif'
-        ctx.textAlign = 'center'
-        ctx.textBaseline = 'bottom'
-        ctx.fillStyle = '#fff'
-        ctx.fillText(ICONS[status] ?? '', px, py - 100)
-      }
     })
 
-    // 적 함대 — 평소엔 이모지만 표시(글로우 없음), 어그로 추격 중일 때만 빨간 링,
-    // 준보스급(elite)은 비추격 시 옅은 주황 링으로만 구분 — 위험도에 따라 링 종류를 다르게 사용
+    // 적 함대 — 위협도(레벨)는 글로우 색상, 위협도+준보스 여부(규모)는 글로우/아이콘 크기로 구분.
+    // 어그로 추격 중일 때만 빨간 링, 준보스급(elite)은 비추격 시 옅은 주황 링을 추가로 표시.
     mapEnemies.forEach(enemy => {
       const tier = enemy.threatLevel ?? 1
       const isElite = enemy.tier === 'elite'
@@ -1025,6 +969,15 @@ export default function StrategyMapScreen({ onEnterBattle, onGameOver }) {
       const ex = enemy.x / 100 * W
       const ey = enemy.y / 100 * H
       const size = (isElite ? 20 : 14) + tier * 1.3
+
+      const glowR = size * 1.7
+      const glow = ctx.createRadialGradient(ex, ey, 0, ex, ey, glowR)
+      glow.addColorStop(0, `rgba(${threatColorRgb(tier)},0.35)`)
+      glow.addColorStop(1, `rgba(${threatColorRgb(tier)},0)`)
+      ctx.fillStyle = glow
+      ctx.beginPath()
+      ctx.arc(ex, ey, glowR, 0, Math.PI * 2)
+      ctx.fill()
 
       if (isChasing) {
         ctx.strokeStyle = `rgba(220,38,38,${0.6 + Math.sin(t * 4) * 0.2})`
@@ -1179,9 +1132,6 @@ export default function StrategyMapScreen({ onEnterBattle, onGameOver }) {
   const barTarget   = byId.get(selectedId) ?? null
   const barStatus   = barTarget ? statusOf(barTarget, { currentNodeId, conqueredNodeIds }) : null
   const fleetSummary = getFleetSummary(roster, shipsData, acesData, skillsData)
-
-  // ─── 다음 목표 순환 대상: 진입 가능(미정복)한 별계 ───
-  const actionableNodes = systems.filter((s) => statusOf(s, { currentNodeId, conqueredNodeIds }) === 'reachable')
 
   function enemyName(id) {
     return enemyById.get(id)?.name ?? bossById.get(id)?.name ?? id
@@ -1341,33 +1291,6 @@ export default function StrategyMapScreen({ onEnterBattle, onGameOver }) {
     setFleetMode('moving')
     setSelectedId(null)
     showAlert(`⚓ ${nearest.name}(으)로 정박 항해를 시작합니다.`)
-  }
-
-  // ─── 다음 목표 — 진입 가능 별계를 순서대로 선택 ───
-  function handleCycleObjective() {
-    if (!actionableNodes.length) {
-      showAlert('🧭 진입 가능한 목표 별계가 없습니다.')
-      return
-    }
-    const curIdx = actionableNodes.findIndex((s) => s.id === selectedId)
-    const next = actionableNodes[(curIdx + 1) % actionableNodes.length]
-    setSelectedId(next.id)
-  }
-
-  // ─── 턴 허브 "이벤트 확인" — 맵 위 미확인 이벤트(상인/표류 함선) 요약 ───
-  function handleCheckEvents() {
-    if (!mapEvents.length) {
-      showAlert('📡 주변에 감지된 이벤트가 없습니다.')
-      return
-    }
-    let nearest = null, nearestD = Infinity
-    for (const ev of mapEvents) {
-      const d = Math.hypot(ev.x - playerPos.x, ev.y - playerPos.y)
-      if (d < nearestD) { nearestD = d; nearest = ev }
-    }
-    const label = nearest.type === 'merchant' ? '떠돌이 상인' : '표류 함선'
-    const dir   = compassDirection(nearest.x - playerPos.x, nearest.y - playerPos.y)
-    showAlert(`📡 감지된 이벤트 ${mapEvents.length}건 — 가장 가까운 신호: ${MAP_EVENT_ICON[nearest.type]} ${label} (${dir}쪽)`)
   }
 
   // ─── 요약전투: 맵 위에서 즉시 결과 산출 ───
@@ -1583,42 +1506,6 @@ export default function StrategyMapScreen({ onEnterBattle, onGameOver }) {
           onMouseMove={handleCanvasMouseMove}
           onMouseLeave={handleCanvasMouseLeave}
         />
-        {/* 좌상단 뷰 토글 — 기본/위험도/자원/점령 현황 오버레이 전환 (Endless Space 2 일반·경제 뷰 스타일) */}
-        <div className="map-view-tabs">
-          {MAP_VIEWS.map((v) => (
-            <button
-              key={v.id}
-              className={`map-view-tab${mapView === v.id ? ' active' : ''}`}
-              onClick={() => setMapView(v.id)}
-              title={v.caption ?? '기본 보기 — 추가 오버레이 없이 가장 깔끔하게 표시합니다.'}
-            >
-              <span className="map-view-tab-icon">{v.icon}</span>
-              <span className="map-view-tab-label">{v.label}</span>
-            </button>
-          ))}
-          <button
-            className="map-view-tab map-view-tab--action"
-            onClick={handleCycleObjective}
-            title="미확인 진입 가능 별계를 순서대로 선택합니다"
-          >
-            <span className="map-view-tab-icon">🧭</span>
-            <span className="map-view-tab-label">다음 목표</span>
-            {actionableNodes.length > 0 && <span className="map-view-tab-badge">{actionableNodes.length}</span>}
-          </button>
-          <button
-            className="map-view-tab map-view-tab--action"
-            onClick={handleCheckEvents}
-            title="맵 위 미확인 이벤트(상인/표류 함선)를 알려줍니다"
-          >
-            <span className="map-view-tab-icon">📡</span>
-            <span className="map-view-tab-label">이벤트 확인</span>
-            {mapEvents.length > 0 && <span className="map-view-tab-badge">{mapEvents.length}</span>}
-          </button>
-        </div>
-        {mapView !== 'default' && (
-          <div className="map-view-caption">{MAP_VIEWS.find((v) => v.id === mapView)?.caption}</div>
-        )}
-
         {/* 호버 시: 가벼운 요약 툴팁 (세력/위험/보상/이동 비용) — 클릭 상세 패널과 분리 */}
         {hover && (() => {
           const node = byId.get(hover.id)
@@ -1632,7 +1519,7 @@ export default function StrategyMapScreen({ onEnterBattle, onGameOver }) {
             : `보이드 군세 위협도 Lv.${node.threatLevel ?? 1}`
           return (
             <div
-              className="map-tooltip"
+              className="map-tooltip holo-panel holo-panel--tight"
               style={{
                 ...(flipX ? { right: hover.w - hover.x + 14 } : { left: hover.x + 14 }),
                 ...(flipY ? { bottom: hover.h - hover.y + 14 } : { top: hover.y + 14 }),
@@ -1654,11 +1541,11 @@ export default function StrategyMapScreen({ onEnterBattle, onGameOver }) {
           const isPatrolling = fleetMode === 'patrolling'
 
           return (
-            <div className="map-actionbar">
+            <div className="map-actionbar holo-panel">
               <button className="map-actionbar-close" title="선택 해제" onClick={() => setSelectedId(null)}>✕</button>
 
               <div className="map-actionbar-fleet">
-                <div className="map-actionbar-fleet-icon">🛰️</div>
+                <div className="map-actionbar-fleet-icon holo-badge holo-badge--circle">🛰️</div>
                 <div className="map-actionbar-fleet-info">
                   <p className="map-actionbar-fleet-name">
                     {fleetSummary?.leaderName ?? '함대'}
@@ -1674,7 +1561,7 @@ export default function StrategyMapScreen({ onEnterBattle, onGameOver }) {
               </div>
 
               <div className="map-actionbar-target">
-                <span className="map-actionbar-target-icon">{ROLE_ICON[barTarget.role] ?? '🪐'}</span>
+                <span className="map-actionbar-target-icon holo-badge holo-badge--circle">{ROLE_ICON[barTarget.role] ?? '🪐'}</span>
                 <div>
                   <p className="map-actionbar-target-name">{barTarget.name}</p>
                   <p className={`map-info-status map-info-status--${barStatus}`}>{STATUS_LABEL[barStatus]}</p>
@@ -1697,7 +1584,7 @@ export default function StrategyMapScreen({ onEnterBattle, onGameOver }) {
         {/* 자동전투 토글 — 우하단 작게 유지 */}
         <div style={{ position: 'absolute', bottom: 14, right: 14 }}>
           <button
-            className={`turn-hub-btn${summaryBattle ? ' turn-hub-btn--on' : ''}`}
+            className={`turn-hub-btn holo-panel holo-panel--tight${summaryBattle ? ' turn-hub-btn--on' : ''}`}
             onClick={() => useSettingsStore.getState().setSummaryBattle(!summaryBattle)}
             title="자동전투 — 켜면 전투 진입 시 전술전투 대신 결과를 즉시 산출합니다"
           >
@@ -1766,7 +1653,7 @@ export default function StrategyMapScreen({ onEnterBattle, onGameOver }) {
             </p>
 
             <div className="map-info-card">
-              <p className="map-info-card-h">상세 정보</p>
+              <p className="map-info-card-h holo-h">상세 정보</p>
               <p className="map-info-card-row">🛰 함대 배치 <span>{fleetStatusText}</span></p>
               <p className="map-info-card-row">🏗 개발 단계 <span>{devStatusText}</span></p>
               <p className="map-info-card-row">🎁 히든 요소 <span>{hiddenStatusText}</span></p>

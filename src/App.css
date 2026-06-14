@@ -97,6 +97,10 @@
   display: flex;
   align-items: center;
   gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.03);
 }
 
 .resource-hud-icon {
@@ -113,6 +117,7 @@
   font-weight: bold;
   min-width: 28px;
   text-align: right;
+  text-shadow: 0 0 8px rgba(255, 209, 102, 0.5);
 }
 
 /* ── 전투 레이아웃 ── */
@@ -131,6 +136,7 @@
   line-height: 0;
   background: #060a1c;
   min-width: 0;
+  position: relative;
 }
 
 /* ── 전투 사이드패널 (좌=아군 / 우=적군+조작) ── */
@@ -138,8 +144,13 @@
   width: 190px;
   min-width: 190px;
   height: 100%;
-  background: rgba(6, 10, 28, 0.97);
-  border-right: 1px solid var(--line);
+  background:
+    linear-gradient(180deg, rgba(79, 184, 255, 0.06), transparent 45%),
+    var(--panel);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-right: 1px solid var(--line-strong);
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.35);
   display: flex;
   flex-direction: column;
   overflow-y: auto;
@@ -149,7 +160,8 @@
 }
 .battle-subnav--right {
   border-right: none;
-  border-left: 1px solid var(--line);
+  border-left: 1px solid var(--line-strong);
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.35);
 }
 
 /* ── 전투 조작 버튼 그룹 ── */
@@ -166,10 +178,10 @@
   font-family: var(--mono);
   font-size: 12px;
   font-weight: bold;
-  padding: 6px 10px;
-  border-radius: 6px;
+  padding: 7px 10px;
   border: 1px solid rgba(255,255,255,0.15);
   background: rgba(255,255,255,0.04);
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
   color: var(--dim);
   cursor: pointer;
   transition: all 0.15s;
@@ -179,6 +191,7 @@
   border-color: rgba(255,255,255,0.3);
   background: rgba(255,255,255,0.08);
   color: var(--text);
+  box-shadow: 0 0 12px rgba(255,255,255,0.15);
 }
 .bnav-action-btn:disabled {
   opacity: 0.35;
@@ -188,6 +201,7 @@
   color: #7dffb0;
   border-color: rgba(125,255,176,0.5);
   background: rgba(125,255,176,0.08);
+  box-shadow: 0 0 12px rgba(125,255,176,0.25);
 }
 .bnav-action-btn--flee {
   color: #4fb8ff;
@@ -195,6 +209,7 @@
 }
 .bnav-action-btn--flee:hover:not(:disabled) {
   background: rgba(79,184,255,0.1);
+  box-shadow: 0 0 12px rgba(79,184,255,0.35);
 }
 .bnav-action-btn--negotiate {
   color: #ffd166;
@@ -202,6 +217,7 @@
 }
 .bnav-action-btn--negotiate:hover:not(:disabled) {
   background: rgba(255,209,102,0.08);
+  box-shadow: 0 0 12px rgba(255,209,102,0.35);
 }
 .bnav-action-btn--endturn {
   color: #ff7043;
@@ -211,6 +227,7 @@
 }
 .bnav-action-btn--endturn:hover:not(:disabled) {
   background: rgba(255,112,67,0.12);
+  box-shadow: 0 0 12px rgba(255,112,67,0.35);
 }
 .bnav-action-icon { font-size: 14px; flex-shrink: 0; }
 
@@ -225,9 +242,6 @@
   z-index: 200;
 }
 .btl-modal {
-  background: #0d1128;
-  border: 1px solid rgba(79,184,255,0.25);
-  border-radius: 10px;
   padding: 22px 24px;
   min-width: 340px;
   max-width: 480px;
@@ -242,6 +256,7 @@
   font-weight: bold;
   color: #ffd166;
   letter-spacing: 1px;
+  text-shadow: 0 0 10px rgba(255, 209, 102, 0.5);
 }
 .btl-modal-desc {
   font-family: var(--kr);
@@ -254,6 +269,7 @@
   font-family: var(--mono);
   font-size: 16px;
   color: #3ad6c4;
+  text-shadow: 0 0 8px rgba(58, 214, 196, 0.5);
 }
 .btl-modal-note {
   font-family: var(--kr);
@@ -275,8 +291,8 @@
   font-size: 13px;
   font-weight: bold;
   padding: 7px 18px;
-  border-radius: 6px;
   border: 1px solid transparent;
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
   cursor: pointer;
   transition: all 0.15s;
 }
@@ -285,7 +301,7 @@
   border-color: #3ad6c4;
   color: #3ad6c4;
 }
-.btl-btn--confirm:hover { background: rgba(58,214,196,0.25); }
+.btl-btn--confirm:hover { background: rgba(58,214,196,0.25); box-shadow: 0 0 14px rgba(58,214,196,0.4); }
 .btl-btn--cancel {
   background: rgba(255,255,255,0.06);
   border-color: rgba(255,255,255,0.2);
@@ -300,14 +316,14 @@
   padding: 5px 12px;
   flex-shrink: 0;
 }
-.btl-btn--option:hover:not(:disabled) { background: rgba(255,209,102,0.22); }
+.btl-btn--option:hover:not(:disabled) { background: rgba(255,209,102,0.22); box-shadow: 0 0 14px rgba(255,209,102,0.35); }
 .btl-btn--option:disabled { opacity: 0.35; cursor: not-allowed; }
 .btl-btn--danger {
   background: rgba(226,59,78,0.12);
   border-color: rgba(226,59,78,0.4);
   color: #e23b4e;
 }
-.btl-btn--danger:hover { background: rgba(226,59,78,0.22); }
+.btl-btn--danger:hover { background: rgba(226,59,78,0.22); box-shadow: 0 0 14px rgba(226,59,78,0.4); }
 
 /* ── 협상 옵션 목록 ── */
 .btl-modal-options {
@@ -320,9 +336,9 @@
   align-items: center;
   gap: 10px;
   padding: 10px 12px;
+}
+.btl-option.holo-panel {
   border-radius: 7px;
-  border: 1px solid rgba(79,184,255,0.1);
-  background: rgba(255,255,255,0.03);
 }
 .btl-option--disabled {
   opacity: 0.35;
@@ -354,45 +370,47 @@
   text-align: right;
 }
 
-/* ── 지형 범례 ── */
-.bnav-terrain-legend {
-  margin-top: auto;
-  padding-top: 12px;
-  border-top: 1px solid var(--line);
+/* ── 지형 안내 아이콘 (맵 우측 상단, 지형별 개별 아이콘 + 호버 설명) ── */
+.terrain-info-row {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 20;
+  display: flex;
+  gap: 6px;
+  line-height: normal;
+}
+.terrain-icon-item {
+  position: relative;
+  width: 30px;
+  height: 30px;
+  font-size: 16px;
+  cursor: help;
+}
+.terrain-icon-glyph {
+  display: block;
+}
+.terrain-icon-tooltip {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 200px;
+  padding: 8px 10px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 3px;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-6px);
+  transition: opacity 0.15s, transform 0.15s, visibility 0.15s;
+  pointer-events: none;
+  z-index: 30;
 }
-.bnav-terrain-title {
-  font-family: var(--mono);
-  font-size: 11px;
-  font-weight: bold;
-  color: var(--dim);
-  letter-spacing: 1px;
-  text-transform: uppercase;
-  padding: 0 2px;
-}
-.bnav-terrain-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 6px 8px;
-  border-radius: 5px;
-  background: rgba(255,255,255,0.025);
-  border: 1px solid rgba(255,255,255,0.05);
-}
-.bnav-terrain-glyph {
-  font-size: 18px;
-  line-height: 1.2;
-  flex-shrink: 0;
-  width: 22px;
-  text-align: center;
-}
-.bnav-terrain-info {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
+.terrain-icon-item:hover .terrain-icon-tooltip,
+.terrain-icon-item:focus-within .terrain-icon-tooltip {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
 }
 .bnav-terrain-name {
   font-family: var(--mono);
@@ -424,26 +442,30 @@
   letter-spacing: 1px;
   margin-bottom: 8px;
   padding: 4px 8px;
-  border-radius: 5px;
+  border-radius: 4px;
+  border-left: 2px solid currentColor;
 }
 
 .bnav-heading--ally {
   color: #3ad6c4;
   background: rgba(58, 214, 196, 0.1);
+  text-shadow: 0 0 8px rgba(58, 214, 196, 0.5);
 }
 
 .bnav-heading--enemy {
   color: #e23b4e;
   background: rgba(226, 59, 78, 0.1);
+  text-shadow: 0 0 8px rgba(226, 59, 78, 0.5);
 }
 
 .bnav-unit {
   padding: 8px 6px;
-  border-radius: 6px;
-  border: 1px solid rgba(79, 184, 255, 0.08);
   margin-bottom: 6px;
   transition: opacity 0.2s;
-  background: rgba(255, 255, 255, 0.02);
+}
+
+.bnav-unit.holo-panel {
+  border-radius: 6px;
 }
 
 .bnav-unit--dead {
@@ -513,6 +535,7 @@
   flex: 1;
   height: 6px;
   background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 3px;
   overflow: hidden;
 }
@@ -560,9 +583,13 @@
   min-height: 44px;
   flex-shrink: 0;
   flex-wrap: wrap;
-  background: rgba(10, 14, 39, 0.96);
-  border-bottom: 1px solid var(--line);
-  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.35);
+  background:
+    linear-gradient(180deg, rgba(79, 184, 255, 0.08), transparent 60%),
+    var(--panel);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--line-strong);
+  box-shadow: 0 2px 20px rgba(0, 0, 0, 0.4), 0 1px 0 rgba(58, 214, 196, 0.15);
 }
 
 .app-topbar-burger {
@@ -570,16 +597,16 @@
   align-items: center;
   gap: 8px;
   padding: 6px 12px;
-  border-radius: 8px;
   border: 1px solid var(--line);
   background: rgba(79, 184, 255, 0.08);
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
   color: var(--text);
   font-family: var(--mono);
   font-size: 15px;
   letter-spacing: 2px;
   cursor: pointer;
   flex-shrink: 0;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  transition: background 0.15s, border-color 0.15s, color 0.15s, box-shadow 0.15s;
 }
 
 .app-topbar-burger:hover,
@@ -587,6 +614,7 @@
   border-color: var(--cyan);
   color: var(--cyan);
   background: rgba(79, 184, 255, 0.16);
+  box-shadow: 0 0 14px rgba(58, 214, 196, 0.4);
 }
 
 .app-topbar-burger-icon {
@@ -619,14 +647,20 @@
   align-items: center;
   gap: 6px;
   white-space: nowrap;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.03);
 }
 
 .app-topbar-stat b {
   color: var(--gold);
+  text-shadow: 0 0 8px rgba(255, 209, 102, 0.5);
 }
 
 .app-topbar-stat--turn b {
   color: var(--cyan);
+  text-shadow: 0 0 8px rgba(58, 214, 196, 0.5);
 }
 
 .app-topbar-stat-icon {
@@ -653,9 +687,6 @@
   margin-top: 6px;
   padding: 6px;
   min-width: 180px;
-  background: rgba(10, 14, 39, 0.98);
-  border: 1px solid var(--line);
-  border-radius: 10px;
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
   animation: app-topbar-drawer-in 0.15s ease;
 }
@@ -688,6 +719,7 @@
   background: rgba(79, 184, 255, 0.15);
   border-color: var(--cyan);
   color: var(--cyan);
+  box-shadow: 0 0 12px rgba(58, 214, 196, 0.3);
 }
 
 .app-topbar-drawer-btn:disabled {

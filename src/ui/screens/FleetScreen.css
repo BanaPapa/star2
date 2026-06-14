@@ -7,6 +7,24 @@
   text-align: left;
 }
 
+.fleet-hint {
+  margin: 0;
+  padding: 10px 14px;
+  font-family: var(--kr);
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--dim);
+  background: rgba(79, 184, 255, 0.04);
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--cyan);
+  border-radius: 6px;
+}
+
+.fleet-hint b {
+  color: var(--cyan);
+  font-weight: 600;
+}
+
 .fleet-roster {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
@@ -14,18 +32,14 @@
 }
 
 .fleet-card {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 14px 16px;
+  padding: 16px 18px;
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
 
 .fleet-card--promoted {
-  border-color: rgba(255, 209, 102, 0.45);
-  box-shadow: 0 0 18px rgba(255, 209, 102, 0.1);
+  box-shadow: 0 0 24px rgba(255, 209, 102, 0.12);
 }
 
 .fleet-card-head {
@@ -35,22 +49,18 @@
 }
 
 .fleet-card-icon {
-  width: 44px;
-  height: 44px;
-  flex: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 28px;
-  border-radius: 8px;
-  background: rgba(79, 184, 255, 0.08);
-  border: 1px solid var(--line);
+  width: 48px;
+  height: 48px;
+  font-size: 30px;
+  border-radius: 10px;
   object-fit: cover;
 }
 
 .fleet-card-name {
   margin: 0;
+  font-family: var(--disp);
   font-size: 16px;
+  font-weight: 600;
   color: #fff;
   letter-spacing: 0.5px;
   display: flex;
@@ -60,24 +70,20 @@
 
 .fleet-card-level {
   font-family: var(--mono);
-  font-size: 12px;
-  color: var(--cyan);
-}
-
-.fleet-card-badge {
-  font-family: var(--mono);
   font-size: 10px;
   letter-spacing: 1px;
-  color: #1c1408;
-  background: var(--gold);
-  border-radius: 4px;
-  padding: 2px 6px;
+  color: var(--cyan);
+  border: 1px solid rgba(58, 214, 196, 0.35);
+  background: rgba(58, 214, 196, 0.08);
+  border-radius: 999px;
+  padding: 1px 9px;
 }
 
 .fleet-card-role {
-  margin: 2px 0 0;
+  margin: 3px 0 0;
   font-family: var(--mono);
   font-size: 11px;
+  letter-spacing: 0.3px;
   color: var(--dim);
 }
 
@@ -89,18 +95,6 @@
 
 .fleet-xp-bar {
   flex: 1;
-  height: 8px;
-  border-radius: 5px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid var(--line);
-  overflow: hidden;
-}
-
-.fleet-xp-fill {
-  height: 100%;
-  background: linear-gradient(90deg, var(--cyan), var(--blue));
-  box-shadow: 0 0 10px rgba(58, 214, 196, 0.5);
-  transition: width 0.2s ease;
 }
 
 .fleet-xp-label {
@@ -110,28 +104,42 @@
   white-space: nowrap;
 }
 
-.fleet-stat-table {
-  border-collapse: collapse;
+/* ── 능력치 그리드 (코너 브래킷 패널 내부의 글로우 스탯 칸) ── */
+.fleet-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.fleet-stat-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 7px 4px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.fleet-stat-label {
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  color: var(--dim);
+}
+
+.fleet-stat-value {
+  font-family: var(--mono);
+  font-size: 12px;
   color: var(--text);
 }
 
-.fleet-stat-table th {
-  text-align: left;
-  color: var(--dim);
-  font-weight: normal;
-  padding: 2px 8px 2px 0;
-}
-
-.fleet-stat-table td {
-  text-align: left;
-  padding: 2px 18px 2px 0;
-}
-
-.fleet-stat-table b {
+.fleet-stat-value b {
   color: var(--cyan);
   font-weight: normal;
+  text-shadow: 0 0 8px rgba(58, 214, 196, 0.5);
 }
 
 .fleet-finisher-list {
@@ -153,56 +161,46 @@
   flex-wrap: wrap;
 }
 
-.fleet-finisher-tag {
-  font-family: var(--mono);
-  font-size: 9px;
-  letter-spacing: 0.5px;
-  border-radius: 4px;
-  padding: 2px 6px;
-  white-space: nowrap;
-}
-
-.fleet-finisher-tag--ace {
-  color: #0d2230;
-  background: var(--cyan);
-}
-
-.fleet-finisher-tag--class {
-  color: #1c1408;
-  background: var(--gold);
-}
-
 .fleet-finisher-desc {
   color: var(--dim);
   font-size: 11px;
 }
 
+/* ── 전직/건조 버튼 — 코너컷 + 글로우 호버 ── */
 .fleet-promote-btn {
   align-self: flex-start;
-  font-family: var(--kr);
+  font-family: var(--disp);
   font-size: 12px;
-  color: var(--text);
-  background: rgba(79, 184, 255, 0.1);
+  font-weight: 600;
+  letter-spacing: 1px;
+  color: var(--dim);
+  background: rgba(255, 255, 255, 0.03);
   border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 8px 14px;
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+  padding: 9px 16px;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
-.fleet-promote-btn:not(:disabled):hover {
-  color: #1c1408;
-  background: var(--gold);
-  border-color: var(--gold);
-  box-shadow: 0 0 16px rgba(255, 209, 102, 0.4);
+.fleet-promote-btn--ready {
+  color: var(--gold);
+  border-color: rgba(255, 209, 102, 0.5);
+  background: rgba(255, 209, 102, 0.08);
+}
+
+.fleet-promote-btn--ready:hover {
+  color: var(--bg-0);
+  background: linear-gradient(135deg, var(--gold), #ffb347);
+  box-shadow: 0 0 18px rgba(255, 209, 102, 0.5);
+  border-color: transparent;
 }
 
 .fleet-promote-btn:disabled {
-  color: var(--dim);
   cursor: default;
   opacity: 0.7;
 }
 
+/* ── 장착 슬롯 (무기/모듈) ── */
 .equip-slots {
   display: flex;
   flex-direction: column;
@@ -217,14 +215,17 @@
   font-family: var(--mono);
   font-size: 11px;
   color: var(--text);
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 6px 10px;
+  border-radius: 7px;
+  padding: 7px 12px;
+}
+
+.equip-slot.holo-panel {
+  border-radius: 7px;
 }
 
 .equip-slot-label {
   color: var(--dim);
+  letter-spacing: 0.5px;
   white-space: nowrap;
 }
 
@@ -239,15 +240,12 @@
 .equip-slot-icon {
   width: 22px;
   height: 22px;
-  flex: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   font-size: 14px;
-  border-radius: 5px;
-  background: rgba(79, 184, 255, 0.08);
-  border: 1px solid var(--line);
   object-fit: cover;
+}
+
+.equip-slot-icon.holo-badge {
+  border-radius: 6px;
 }
 
 .equip-slot-name {
@@ -259,6 +257,7 @@
 .equip-slot-mods {
   color: var(--cyan);
   white-space: nowrap;
+  text-shadow: 0 0 8px rgba(58, 214, 196, 0.45);
 }
 
 .equip-slot-empty {
@@ -269,73 +268,70 @@
   font-family: var(--mono);
   font-size: 11px;
   color: var(--text);
-  background: var(--panel);
+  background: var(--panel-2);
   border: 1px solid var(--line);
-  border-radius: 5px;
-  padding: 4px 8px;
+  border-radius: 999px;
+  padding: 4px 10px;
   cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
 
+.equip-slot-select:hover,
+.equip-slot-select:focus {
+  outline: none;
+  border-color: var(--cyan);
+  box-shadow: 0 0 8px rgba(58, 214, 196, 0.35);
+}
+
+/* ── 상단 탭 (편성 목록 / 조선소 / 에이스) ── */
 .fleet-tab-bar {
   display: flex;
   gap: 8px;
 }
 
 .fleet-tab-btn {
-  font-family: var(--mono);
-  font-size: 12px;
-  letter-spacing: 0.5px;
+  font-family: var(--disp);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 1px;
   color: var(--dim);
-  background: transparent;
+  background: rgba(255, 255, 255, 0.02);
   border: 1px solid var(--line);
   border-radius: 6px;
-  padding: 6px 14px;
+  padding: 8px 18px;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all 0.18s ease;
+}
+
+.fleet-tab-btn:hover:not(.active) {
+  color: var(--text);
+  border-color: var(--line-strong);
 }
 
 .fleet-tab-btn.active {
-  color: #061018;
-  background: var(--cyan);
+  color: var(--bg-0);
+  background: linear-gradient(180deg, var(--cyan), #27b9a8);
   border-color: var(--cyan);
+  box-shadow: 0 0 14px rgba(58, 214, 196, 0.45);
 }
 
 .fleet-card--locked {
   opacity: 0.55;
+  filter: grayscale(0.4);
 }
 
 .shipyard-lock-msg {
   margin: 0;
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: 11px;
+  letter-spacing: 0.5px;
   color: var(--dim);
+  padding: 8px 12px;
+  border: 1px dashed var(--line);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.02);
 }
 
 .shipyard {
   width: 100%;
-}
-
-.fleet-toggle {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 4px;
-}
-
-.fleet-toggle-btn {
-  font-family: var(--mono);
-  font-size: 12px;
-  letter-spacing: 1px;
-  color: var(--dim);
-  background: transparent;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 6px 14px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.fleet-toggle-btn.active {
-  color: #061018;
-  background: var(--cyan);
-  border-color: var(--cyan);
 }

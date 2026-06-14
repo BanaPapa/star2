@@ -2,7 +2,7 @@
   "_comment": "상점 정의. inventory=판매 아이템 id(items.json 참조). unlockedBy=연구 진행 시 목록 확장. priceMultiplier=기준가 배율.",
   "shops": [
     {
-      "id": "home_shop", "name": "모항 상점", "type": "base", "priceMultiplier": 1.0,
+      "id": "home_shop", "name": "모항 상점", "type": "base", "priceMultiplier": 1.0, "sellRate": 0.6,
       "inventory": ["pulse_cannon","twin_pulse","missile_pod","armor_plate","evasion_ctrl","targeting_comp","nano_kit","tp_injector","smoke","emp_grenade"],
       "expands": [
         { "unlockedBy": "weapon_eng_1",  "add": ["railgun","particle_beam"] },
@@ -13,7 +13,7 @@
     },
     {
       "id": "ghost_market", "name": "유령 시장(비밀상점)", "type": "secret", "priceMultiplier": 1.6,
-      "unlockCondition": "s6 도달 + 조건",
+      "unlockCondition": "s3 도달 + 조건",
       "inventory": ["plasma_lance","drone_bay"], "rareStock": { "dm": "대량 거래 가능" },
       "note": "유니크급 장비·고가"
     },

@@ -34,12 +34,12 @@ export default function EquipSlot({ entry, slot, itemsById, ownedItems }) {
   }
 
   return (
-    <div className="equip-slot">
+    <div className="equip-slot holo-panel holo-panel--tight">
       <span className="equip-slot-label">{SLOT_LABELS[slot]}</span>
       <span className="equip-slot-current">
         {equippedItem ? (
           <>
-            <AssetImage assetKey={equippedItem.icon} alt={equippedItem.name} className="equip-slot-icon" />
+            <AssetImage assetKey={equippedItem.icon} alt={equippedItem.name} className="equip-slot-icon holo-badge" />
             <span className="equip-slot-name">{equippedItem.name}</span>
             {formatMods(equippedItem.mods) && <span className="equip-slot-mods">{formatMods(equippedItem.mods)}</span>}
           </>

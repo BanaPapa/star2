@@ -88,6 +88,17 @@ export function getEffectiveShip(ship, entry) {
   }
 }
 
+// 연구 시너지 보너스(useResearchStore.activeSynergyBonus())를 효과 함선 스탯에 더한다.
+// bonus가 빈 객체면 입력을 그대로 반환 — applyEquipment와 동일한 가산 합성 패턴.
+export function applyResearchSynergies(ship, bonus) {
+  if (!bonus || Object.keys(bonus).length === 0) return ship
+  const stats = {}
+  for (const [key, amount] of Object.entries(bonus)) {
+    stats[key] = (ship[key] ?? 0) + amount
+  }
+  return { ...ship, ...stats }
+}
+
 // entry.equipment(weapon/module)에 장착된 아이템의 mods를 효과 함선 스탯에 더한다(MOD-7).
 // itemsById가 없거나 장착 슬롯이 비어 있으면 입력을 그대로 반환 — 순수 가산 합성이라 순서 무관.
 export function applyEquipment(ship, entry, itemsById) {

@@ -44,7 +44,26 @@ function ResourceBar({ resources, wallet }) {
   )
 }
 
-function ResearchTab({ research, resourcesById, itemsById, shipsById }) {
+// 연구 시너지 카드 — requires 전부 해금되면 활성(✅), 아니면 미충족 연구명을 보여준다(🔒).
+function SynergyCard({ synergy, researchById, isUnlocked }) {
+  const active = synergy.requires.every((id) => isUnlocked(id))
+  const reqNames = synergy.requires.map((id) => researchById.get(id)?.name ?? id)
+  const bonusText = Object.entries(synergy.bonus ?? {})
+    .map(([key, amount]) => `${key.toUpperCase()} +${amount}`)
+    .join(' / ')
+
+  return (
+    <div className={`hub-card${active ? ' hub-card--done' : ''}`}>
+      <h4 className="hub-card-title">{active ? '✅' : '🔒'} 시너지 — {synergy.name}</h4>
+      <p className="hub-card-meta">필요 연구: {reqNames.join(' + ')}</p>
+      <p className="hub-card-meta">{synergy.desc}</p>
+      <p className="hub-card-meta">함대 보너스: {bonusText}</p>
+      <span className={`hub-status${active ? ' hub-status--done' : ''}`}>{active ? '활성' : '미충족'}</span>
+    </div>
+  )
+}
+
+function ResearchTab({ research, synergies, resourcesById, itemsById, shipsById }) {
   const isUnlocked = useResearchStore((s) => s.isUnlocked)
   const canUnlock = useResearchStore((s) => s.canUnlock)
   const canAffordUnlock = useResearchStore((s) => s.canAffordUnlock)
@@ -52,10 +71,11 @@ function ResearchTab({ research, resourcesById, itemsById, shipsById }) {
   useResourceStore((s) => s.wallet) // 지갑 변동 시 재렌더
   const isDeveloped = useDevelopmentStore((s) => s.isDeveloped)
   useDevelopmentStore((s) => s.developed) // 개발 상태 변경 시 재렌더
-  const s3Boost = isDeveloped('s3')
+  const s2Boost = isDeveloped('s2')
   const researchById = new Map(research.map((n) => [n.id, n]))
 
   return (
+    <>
     <div className="hub-grid">
       {research.map((node) => {
         const unlocked = isUnlocked(node.id)
@@ -81,7 +101,7 @@ function ResearchTab({ research, resourcesById, itemsById, shipsById }) {
             )}
             <p className="hub-card-meta">
               비용: <span className={affordable ? '' : 'hub-cost--short'}>{formatCost(node.cost, resourcesById)}</span>
-              {s3Boost && <span style={{ color: '#7cffb2', marginLeft: 6 }}>(-25% 할인 적용)</span>}
+              {s2Boost && <span style={{ color: '#7cffb2', marginLeft: 6 }}>(-25% 할인 적용)</span>}
             </p>
             <ul className="hub-card-unlocks">
               {node.unlock.map((key) => (
@@ -102,6 +122,14 @@ function ResearchTab({ research, resourcesById, itemsById, shipsById }) {
         )
       })}
     </div>
+    {synergies.length > 0 && (
+      <div className="hub-grid">
+        {synergies.map((synergy) => (
+          <SynergyCard key={synergy.id} synergy={synergy} researchById={researchById} isUnlocked={isUnlocked} />
+        ))}
+      </div>
+    )}
+    </>
   )
 }
 
@@ -112,6 +140,8 @@ function ShopTab({ shops, itemsById }) {
   const spend = useResourceStore((s) => s.spend)
   const addItem = useFleetStore((s) => s.addItem)
   const ownedItems = useFleetStore((s) => s.ownedItems)
+  const equippedCount = useFleetStore((s) => s.equippedCount)
+  const sellItem = useFleetStore((s) => s.sellItem)
 
   const homeShop = shops.find((s) => s.type === 'base')
   const otherShops = shops.filter((s) => s.type !== 'base')
@@ -120,6 +150,12 @@ function ShopTab({ shops, itemsById }) {
     .filter((expansion) => isUnlocked(expansion.unlockedBy))
     .flatMap((expansion) => expansion.add)
   const inventoryIds = [...new Set([...(homeShop?.inventory ?? []), ...expandedIds])]
+  const sellRate = homeShop?.sellRate ?? 0.6
+
+  // 보유 수량 중 장착되지 않은 여분 — sellRate(환율)로 SC 환전 가능한 항목만 표시.
+  const sellableEntries = Object.entries(ownedItems)
+    .map(([itemId, count]) => ({ itemId, item: itemsById.get(itemId), spare: count - equippedCount(itemId) }))
+    .filter(({ item, spare }) => item?.price && spare > 0)
 
   function buy(itemId, price) {
     if (!spend({ sc: price })) return
@@ -160,6 +196,32 @@ function ShopTab({ shops, itemsById }) {
           )
         })}
       </div>
+
+      {sellableEntries.length > 0 && (
+        <>
+          <h3 className="hub-shop-name">보유 장비 판매 (환율 {Math.round(sellRate * 100)}%)</h3>
+          <div className="hub-grid">
+            {sellableEntries.map(({ itemId, item, spare }) => {
+              const sellPrice = Math.floor(item.price * sellRate)
+              return (
+                <div key={itemId} className="hub-card">
+                  <div className="hub-card-head">
+                    <AssetImage assetKey={item.icon} alt={item.name} className="hub-item-icon" />
+                    <div>
+                      <h4 className="hub-card-title">{item.name}</h4>
+                      <p className="hub-card-meta">여분 {spare}개</p>
+                    </div>
+                  </div>
+                  <p className="hub-card-meta">판매가: 💳 {sellPrice} SC</p>
+                  <button className="hub-action-btn" onClick={() => sellItem(itemId)}>
+                    💰 판매
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        </>
+      )}
 
       {otherShops.map((shop) => (
         <div key={shop.id} className="hub-locked-shop">
@@ -233,6 +295,7 @@ export default function MaintenanceHubScreen() {
   const [tab, setTab] = useState('research')
 
   const research = useDataStore((s) => s.data?.research?.research)
+  const synergies = useDataStore((s) => s.data?.research?.synergies ?? [])
   const items = useDataStore((s) => s.data?.items)
   const shops = useDataStore((s) => s.data?.shops?.shops)
   const resources = useDataStore((s) => s.data?.resources?.resources)
@@ -258,7 +321,7 @@ export default function MaintenanceHubScreen() {
       </div>
 
       {tab === 'research' && (
-        <ResearchTab research={research} resourcesById={resourcesById} itemsById={itemsById} shipsById={shipsById} />
+        <ResearchTab research={research} synergies={synergies} resourcesById={resourcesById} itemsById={itemsById} shipsById={shipsById} />
       )}
       {tab === 'shop' && <ShopTab shops={shops} itemsById={itemsById} />}
       {tab === 'craft' && (

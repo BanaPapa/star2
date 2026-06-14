@@ -3,28 +3,26 @@ import { useDataStore } from '../../state/useDataStore'
 import { useFleetStore } from '../../state/useFleetStore'
 import { useResearchStore } from '../../state/useResearchStore'
 import { useProgressStore } from '../../state/useProgressStore'
-import { useDevelopmentStore } from '../../state/useDevelopmentStore'
 import { useResourceStore } from '../../state/useResourceStore'
-import { getEffectiveShip, applyEquipment, getUnitFinishers, canPromote, xpToNextLevel } from '../../core/growth'
+import { getEffectiveShip, applyEquipment, applyResearchSynergies, getUnitFinishers, canPromote, xpToNextLevel } from '../../core/growth'
 import AssetImage from '../components/AssetImage'
 import EquipSlot from '../components/EquipSlot'
 import './FleetScreen.css'
 
 // 함선 해금 조건 충족 여부 — ships.json의 unlock 필드 해석
-function isShipUnlocked(ship, { conqueredNodeIds, unlockedIds, developed }) {
+function isShipUnlocked(ship, { conqueredNodeIds, unlockedIds }) {
   const unlock = ship.unlock
   if (!unlock || unlock === 'start') return true
   if (unlock.startsWith('progress:')) return conqueredNodeIds.includes(unlock.split(':')[1])
   if (unlock.startsWith('research:')) {
     const resId = unlock.split(':')[1]
     if (unlockedIds.includes(resId)) return true
-    if (resId === 'carrier_ops' && developed.includes('s7')) return true
     return false
   }
   return false
 }
 
-function unlockLabel(ship, { conqueredNodeIds, unlockedIds, developed }) {
+function unlockLabel(ship, { conqueredNodeIds, unlockedIds }) {
   const unlock = ship.unlock
   if (!unlock || unlock === 'start') return null
   if (unlock.startsWith('progress:')) {
@@ -33,9 +31,7 @@ function unlockLabel(ship, { conqueredNodeIds, unlockedIds, developed }) {
   }
   if (unlock.startsWith('research:')) {
     const resId = unlock.split(':')[1]
-    const via7 = resId === 'carrier_ops' && developed.includes('s7')
-    if (unlockedIds.includes(resId) || via7) return null
-    if (resId === 'carrier_ops') return '🔒 모함 운용 연구 또는 s7 최종 조선소 개발 필요'
+    if (unlockedIds.includes(resId)) return null
     return `🔒 연구 "${resId}" 필요`
   }
   return null
@@ -56,11 +52,11 @@ function AceTab({ aces, skills, roster, assignAce, recruitedAces, shipsById }) {
         const buffEntries = Object.entries(ace.fleetBuff ?? {})
 
         return (
-          <div key={ace.id} className={`hub-card${!isAvailable ? ' hub-card--locked' : ''}`}>
+          <div key={ace.id} className={`hub-card holo-panel${!isAvailable ? ' hub-card--locked' : ''}`}>
             <h4 className="hub-card-title">
               {isAvailable ? '🎖' : '🔒'} {ace.name}
-              {isStarting && <span className="hub-card-badge" style={{ marginLeft: 8, fontSize: 9 }}>기본 배정</span>}
-              {isRecruited && !isStarting && <span className="hub-card-badge" style={{ marginLeft: 8, fontSize: 9 }}>영입 완료</span>}
+              {isStarting && <span className="holo-pill holo-pill--cyan" style={{ marginLeft: 8 }}>기본 배정</span>}
+              {isRecruited && !isStarting && <span className="holo-pill holo-pill--gold" style={{ marginLeft: 8 }}>영입 완료</span>}
             </h4>
             <p className="hub-card-meta">성격: {ace.personality}</p>
             <p className="hub-card-meta">선호 함종: {ace.affinity.join(', ')}</p>
@@ -127,9 +123,9 @@ export default function FleetScreen() {
   const buyShip = useFleetStore((s) => s.buyShip)
   const assignAce = useFleetStore((s) => s.assignAce)
   const unlockedIds = useResearchStore((s) => s.unlockedIds)
+  const activeSynergyBonus = useResearchStore((s) => s.activeSynergyBonus)
   const conqueredNodeIds = useProgressStore((s) => s.conqueredNodeIds)
   const recruitedAces = useProgressStore((s) => s.recruitedAces)
-  const developed = useDevelopmentStore((s) => s.developed)
   useResourceStore((s) => s.wallet)
 
   if (!ships || !aces || !skills || !items) return null
@@ -167,7 +163,7 @@ export default function FleetScreen() {
               const baseShip = shipsById.get(entry.shipId)
               if (!baseShip) return null
 
-              const ship = applyEquipment(getEffectiveShip(baseShip, entry), entry, itemsById)
+              const ship = applyResearchSynergies(applyEquipment(getEffectiveShip(baseShip, entry), entry, itemsById), activeSynergyBonus())
               const ace = entry.aceId ? acesById.get(entry.aceId) ?? null : null
               const finishers = getUnitFinishers({ ace, ship: baseShip, entry, allSkills: skills })
               const nextXp = xpToNextLevel(baseShip, entry.level)
@@ -175,13 +171,13 @@ export default function FleetScreen() {
               const eligible = canPromote(baseShip, entry)
 
               return (
-                <article className={`fleet-card${ship.promoted ? ' fleet-card--promoted' : ''}`} key={entry.instanceId}>
+                <article className={`fleet-card holo-panel${ship.promoted ? ' holo-panel--gold fleet-card--promoted' : ''}`} key={entry.instanceId}>
                   <header className="fleet-card-head">
-                    <AssetImage assetKey={baseShip.sprite} alt={ship.name} className="fleet-card-icon" />
+                    <AssetImage assetKey={baseShip.sprite} alt={ship.name} className="fleet-card-icon holo-badge" />
                     <div>
                       <h3 className="fleet-card-name">
                         {ship.name} <span className="fleet-card-level">Lv.{ship.level}</span>
-                        {ship.promoted && <span className="fleet-card-badge">전직 완료</span>}
+                        {ship.promoted && <span className="holo-pill holo-pill--gold">전직 완료</span>}
                       </h3>
                       <p className="fleet-card-role">
                         {baseShip.role}
@@ -191,30 +187,29 @@ export default function FleetScreen() {
                   </header>
 
                   <div className="fleet-xp-row">
-                    <div className="fleet-xp-bar">
-                      <div className="fleet-xp-fill" style={{ width: `${xpRatio * 100}%` }} />
+                    <div className="fleet-xp-bar holo-bar">
+                      <div className="fleet-xp-fill holo-bar-fill" style={{ width: `${xpRatio * 100}%` }} />
                     </div>
                     <span className="fleet-xp-label">
                       XP {entry.xp} / {Number.isFinite(nextXp) ? nextXp : '—'}
                     </span>
                   </div>
 
-                  <table className="fleet-stat-table">
-                    <tbody>
-                      <tr>
-                        <th>HP</th><td>{baseShip.hp} → <b>{ship.hp}</b></td>
-                        <th>ATK</th><td>{baseShip.atk} → <b>{ship.atk}</b></td>
-                      </tr>
-                      <tr>
-                        <th>DEF</th><td>{baseShip.def} → <b>{ship.def}</b></td>
-                        <th>ACC</th><td>{baseShip.acc} → <b>{ship.acc}</b></td>
-                      </tr>
-                      <tr>
-                        <th>EVA</th><td>{baseShip.eva} → <b>{ship.eva}</b></td>
-                        <th>MOV</th><td>{baseShip.mov} → <b>{ship.mov}</b></td>
-                      </tr>
-                    </tbody>
-                  </table>
+                  <div className="fleet-stat-grid">
+                    {[
+                      ['HP', baseShip.hp, ship.hp],
+                      ['ATK', baseShip.atk, ship.atk],
+                      ['DEF', baseShip.def, ship.def],
+                      ['ACC', baseShip.acc, ship.acc],
+                      ['EVA', baseShip.eva, ship.eva],
+                      ['MOV', baseShip.mov, ship.mov],
+                    ].map(([label, base, eff]) => (
+                      <div className="fleet-stat-cell" key={label}>
+                        <span className="fleet-stat-label">{label}</span>
+                        <span className="fleet-stat-value">{base} → <b>{eff}</b></span>
+                      </div>
+                    ))}
+                  </div>
 
                   <div className="equip-slots">
                     <EquipSlot entry={entry} slot="weapon" itemsById={itemsById} ownedItems={ownedItems} />
@@ -225,7 +220,7 @@ export default function FleetScreen() {
                     <ul className="fleet-finisher-list">
                       {finishers.map(({ skill, presenterName, source }) => (
                         <li key={skill.id}>
-                          <span className={`fleet-finisher-tag fleet-finisher-tag--${source}`}>
+                          <span className={`holo-pill ${source === 'ace' ? 'holo-pill--cyan' : 'holo-pill--gold'}`}>
                             {source === 'ace' ? '에이스 필살기' : '전직 고유 필살기'}
                           </span>
                           <strong>{skill.name}</strong>
@@ -236,7 +231,7 @@ export default function FleetScreen() {
                   )}
 
                   {baseShip.promotion && !ship.promoted && (
-                    <button className="fleet-promote-btn" disabled={!eligible} onClick={() => promote(entry.instanceId)}>
+                    <button className={`fleet-promote-btn${eligible ? ' fleet-promote-btn--ready' : ''}`} disabled={!eligible} onClick={() => promote(entry.instanceId)}>
                       {eligible
                         ? `✨ "${baseShip.promotion.name}"(으)로 전직!`
                         : `전직 조건 — Lv.${baseShip.promotion.requireLevel} 필요 (현재 Lv.${entry.level})`}
@@ -253,41 +248,38 @@ export default function FleetScreen() {
         <div className="shipyard">
           <p className="fleet-hint">
             해금 조건을 충족한 함선을 스텔라크레딧(SC)으로 구매해 편성에 추가합니다.
-            전함(battleship)은 s4 정복, 모함(carrier)은 모함 운용 연구 또는 s7 최종 조선소 개발 후 구매 가능합니다.
+            배틀십(battleship)은 s2 정복, 디스트로이어(destroyer)는 s1 정복, 배틀크루저(battlecruiser)는 배틀크루저 가동 연구 완료 후 구매 가능합니다.
           </p>
           <div className="fleet-roster">
             {ships.map((ship) => {
-              const locked = !isShipUnlocked(ship, { conqueredNodeIds, unlockedIds, developed })
-              const lockReason = unlockLabel(ship, { conqueredNodeIds, unlockedIds, developed })
+              const locked = !isShipUnlocked(ship, { conqueredNodeIds, unlockedIds })
+              const lockReason = unlockLabel(ship, { conqueredNodeIds, unlockedIds })
               const affordable = (wallet.sc ?? 0) >= (ship.cost ?? 0)
               return (
-                <article key={ship.id} className={`fleet-card${locked ? ' fleet-card--locked' : ''}`}>
+                <article key={ship.id} className={`fleet-card holo-panel${locked ? ' fleet-card--locked' : ''}`}>
                   <header className="fleet-card-head">
-                    <AssetImage assetKey={ship.sprite} alt={ship.name} className="fleet-card-icon" />
+                    <AssetImage assetKey={ship.sprite} alt={ship.name} className="fleet-card-icon holo-badge" />
                     <div>
                       <h3 className="fleet-card-name">{ship.name}</h3>
                       <p className="fleet-card-role">{ship.role}</p>
                     </div>
                   </header>
-                  <table className="fleet-stat-table">
-                    <tbody>
-                      <tr>
-                        <th>HP</th><td>{ship.hp}</td>
-                        <th>ATK</th><td>{ship.atk}</td>
-                        <th>DEF</th><td>{ship.def}</td>
-                      </tr>
-                      <tr>
-                        <th>ACC</th><td>{ship.acc}</td>
-                        <th>EVA</th><td>{ship.eva}</td>
-                        <th>MOV</th><td>{ship.mov}</td>
-                      </tr>
-                    </tbody>
-                  </table>
+                  <div className="fleet-stat-grid">
+                    {[
+                      ['HP', ship.hp], ['ATK', ship.atk], ['DEF', ship.def],
+                      ['ACC', ship.acc], ['EVA', ship.eva], ['MOV', ship.mov],
+                    ].map(([label, val]) => (
+                      <div className="fleet-stat-cell" key={label}>
+                        <span className="fleet-stat-label">{label}</span>
+                        <span className="fleet-stat-value">{val}</span>
+                      </div>
+                    ))}
+                  </div>
                   {locked ? (
                     <p className="shipyard-lock-msg">{lockReason}</p>
                   ) : (
                     <button
-                      className="fleet-promote-btn"
+                      className={`fleet-promote-btn${affordable ? ' fleet-promote-btn--ready' : ''}`}
                       disabled={!affordable}
                       onClick={() => buyShip(ship.id)}
                     >

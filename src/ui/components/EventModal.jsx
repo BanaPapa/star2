@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { useResourceStore } from '../../state/useResourceStore'
 import { useFleetStore } from '../../state/useFleetStore'
 import AssetImage from './AssetImage'
@@ -17,6 +18,18 @@ export default function EventModal({ title, body, shop, itemsById, onClose }) {
   const addItem = useFleetStore((s) => s.addItem)
   const ownedItems = useFleetStore((s) => s.ownedItems)
   useResourceStore((s) => s.wallet) // 지갑 변동 시 재렌더
+
+  // 엔터키로 모달 닫기 (행성 발견 등 결과 안내 팝업을 빠르게 확인하고 진행)
+  useEffect(() => {
+    function onKey(e) {
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        onClose()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
 
   function buy(itemId, price) {
     if (!spend({ sc: price })) return

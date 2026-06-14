@@ -17,89 +17,16 @@
   overflow: hidden;
 }
 
-.map-links {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-}
-
-.map-link {
-  stroke: rgba(79, 184, 255, 0.25);
-  stroke-width: 0.5;
-}
-
-.map-link--cleared {
-  stroke: rgba(255, 209, 102, 0.6);
-  stroke-width: 0.7;
-}
-
-.map-node {
-  position: absolute;
-  transform: translate(-50%, -50%);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  padding: 8px 10px;
-  border-radius: 10px;
-  border: 1px solid var(--line);
-  background: rgba(10, 14, 39, 0.85);
-  color: var(--text);
-  cursor: pointer;
-  font-family: var(--mono);
-  min-width: 64px;
-}
-
-.map-node:hover {
-  border-color: var(--cyan);
-}
-
-.map-node-icon {
-  font-size: 22px;
-  line-height: 1;
-}
-
-.map-node-status-icon {
-  font-size: 12px;
-  line-height: 1;
-}
-
-.map-node-label {
-  font-size: 11px;
-  color: var(--dim);
-  white-space: nowrap;
-}
-
-.map-node--current {
-  border-color: var(--cyan);
-  box-shadow: 0 0 16px rgba(79, 184, 255, 0.35);
-}
-
-.map-node--conquered {
-  border-color: rgba(255, 209, 102, 0.5);
-}
-
-.map-node--reachable {
-  border-color: rgba(255, 255, 255, 0.35);
-}
-
-.map-node--locked {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.map-node--selected {
-  outline: 2px solid var(--gold);
-  outline-offset: 2px;
-}
-
 .map-info {
   width: 260px;
   flex: none;
-  background: var(--panel);
-  backdrop-filter: blur(4px);
-  border-left: 1px solid var(--line);
+  background:
+    linear-gradient(180deg, rgba(79, 184, 255, 0.06), transparent 45%),
+    var(--panel);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-left: 1px solid var(--line-strong);
+  box-shadow: -8px 0 28px rgba(0, 0, 0, 0.35);
   padding: 16px;
   display: flex;
   flex-direction: column;
@@ -110,7 +37,9 @@
 
 .map-info-name {
   margin: 0;
+  font-family: var(--disp);
   font-size: 16px;
+  font-weight: 600;
   color: #fff;
   letter-spacing: 0.5px;
 }
@@ -150,6 +79,7 @@
   font-size: 13px;
   color: var(--cyan);
   line-height: 1.5;
+  text-shadow: 0 0 8px rgba(58, 214, 196, 0.4);
 }
 
 .map-info-harvest {
@@ -171,6 +101,7 @@
   background: rgba(255, 209, 102, 0.06);
   border: 1px solid rgba(255, 209, 102, 0.25);
   border-radius: 8px;
+  box-shadow: 0 0 16px rgba(255, 209, 102, 0.08);
 }
 
 .map-dev-title {
@@ -207,43 +138,46 @@
   line-height: 1.4;
 }
 
-.map-action-btn--develop {
-  border-color: var(--gold);
-  background: rgba(255, 209, 102, 0.14);
+/* ── 액션 버튼 — 코너컷 + 글로우 호버 (ui_mockups.html .act 스타일과 통일) ── */
+.map-action-btn {
+  margin-top: 4px;
+  padding: 10px 14px;
+  border: 1px solid var(--cyan);
+  background: rgba(58, 214, 196, 0.08);
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+  color: var(--text);
+  font-family: var(--disp);
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.15s ease;
 }
 
+.map-action-btn:hover {
+  color: var(--bg-0);
+  background: linear-gradient(135deg, var(--cyan), var(--blue));
+  box-shadow: 0 0 18px rgba(58, 214, 196, 0.5);
+  border-color: transparent;
+}
+
+.map-action-btn--enter,
+.map-action-btn--develop {
+  border-color: var(--gold);
+  background: rgba(255, 209, 102, 0.1);
+}
+
+.map-action-btn--enter:hover,
 .map-action-btn--develop:hover:not(:disabled) {
-  background: rgba(255, 209, 102, 0.26);
+  color: var(--bg-0);
+  background: linear-gradient(135deg, var(--gold), #ffb347);
+  box-shadow: 0 0 18px rgba(255, 209, 102, 0.5);
+  border-color: transparent;
 }
 
 .map-action-btn--disabled {
   opacity: 0.5;
   cursor: not-allowed;
-}
-
-.map-action-btn {
-  margin-top: 4px;
-  padding: 10px 14px;
-  border-radius: 8px;
-  border: 1px solid var(--cyan);
-  background: rgba(79, 184, 255, 0.12);
-  color: var(--text);
-  font-family: var(--kr);
-  font-size: 14px;
-  cursor: pointer;
-}
-
-.map-action-btn:hover {
-  background: rgba(79, 184, 255, 0.22);
-}
-
-.map-action-btn--enter {
-  border-color: var(--gold);
-  background: rgba(255, 209, 102, 0.14);
-}
-
-.map-action-btn--enter:hover {
-  background: rgba(255, 209, 102, 0.24);
 }
 
 /* ── 호버 툴팁 (가벼운 요약: 세력·위험·보상·이동 비용) ── */
@@ -252,11 +186,6 @@
   z-index: 20;
   min-width: 168px;
   padding: 8px 10px;
-  background: rgba(6, 10, 28, 0.92);
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
-  pointer-events: none;
   font-family: var(--mono);
 }
 
@@ -299,24 +228,6 @@
 
 .map-info-card-h {
   margin: 0 0 2px;
-  font-family: var(--mono);
-  font-size: 11px;
-  letter-spacing: 2px;
-  text-transform: uppercase;
-  color: var(--cyan);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.map-info-card-h::before {
-  content: '';
-  width: 6px;
-  height: 6px;
-  background: var(--cyan);
-  box-shadow: 0 0 8px var(--cyan);
-  transform: rotate(45deg);
-  flex-shrink: 0;
 }
 
 .map-info-card-row {
@@ -346,10 +257,6 @@
   gap: 10px;
   max-width: calc(100% - 28px);
   padding: 10px 38px 10px 12px;
-  background: var(--panel);
-  backdrop-filter: blur(6px);
-  border: 1px solid var(--line);
-  border-radius: 10px;
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
   animation: map-actionbar-in 0.18s ease;
 }
@@ -394,8 +301,10 @@
 }
 
 .map-actionbar-fleet-icon {
-  font-size: 26px;
-  line-height: 1;
+  width: 40px;
+  height: 40px;
+  font-size: 22px;
+  flex-shrink: 0;
 }
 
 .map-actionbar-fleet-info {
@@ -448,8 +357,10 @@
 }
 
 .map-actionbar-target-icon {
-  font-size: 24px;
-  line-height: 1;
+  width: 38px;
+  height: 38px;
+  font-size: 20px;
+  flex-shrink: 0;
 }
 
 .map-actionbar-target-name {
@@ -475,23 +386,26 @@
 }
 
 .act {
-  font-family: var(--mono);
+  font-family: var(--disp);
+  font-weight: 600;
   font-size: 13px;
   letter-spacing: 1px;
   padding: 10px 14px;
   min-width: 72px;
   text-align: center;
-  background: rgba(10, 16, 42, 0.85);
+  background: rgba(255, 255, 255, 0.03);
   border: 1px solid var(--line);
-  border-radius: 6px;
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
   color: var(--text);
   cursor: pointer;
   transition: 0.18s;
 }
 
 .act:hover:not(:disabled) {
-  border-color: rgba(79, 184, 255, 0.5);
-  background: rgba(79, 184, 255, 0.1);
+  color: var(--bg-0);
+  background: linear-gradient(135deg, var(--cyan), var(--blue));
+  border-color: transparent;
+  box-shadow: 0 0 18px rgba(58, 214, 196, 0.5);
 }
 
 .act:disabled {
@@ -514,45 +428,18 @@
   }
 }
 
-/* ── 우하단 턴 컨트롤 허브 (Endless Space 2 스타일: 보조 버튼 + 턴 종료 고정) ── */
-.turn-hub {
-  position: absolute;
-  right: 14px;
-  bottom: 14px;
-  z-index: 16;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  width: 168px;
-  padding: 10px;
-  background: var(--panel);
-  backdrop-filter: blur(6px);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
-}
-
-.turn-hub-aux {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
+/* ── 우하단 자동전투 토글 ── */
 .turn-hub-btn {
   position: relative;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   gap: 6px;
-  padding: 8px 10px;
-  background: rgba(10, 16, 42, 0.85);
-  border: 1px solid var(--line);
-  border-radius: 6px;
+  padding: 8px 14px;
   color: var(--text);
   font-family: var(--mono);
   font-size: 12px;
   letter-spacing: 0.5px;
-  text-align: left;
   cursor: pointer;
   transition: 0.18s;
 }
@@ -566,185 +453,12 @@
   border-color: #7cffb2;
   color: #7cffb2;
   background: rgba(12, 50, 28, 0.5);
-}
-
-.turn-hub-badge {
-  flex-shrink: 0;
-  min-width: 18px;
-  padding: 1px 5px;
-  border-radius: 999px;
-  background: var(--gold);
-  color: var(--bg-0);
-  font-size: 11px;
-  font-weight: bold;
-  line-height: 1.5;
-  text-align: center;
-}
-
-.turn-hub-end {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  padding: 10px;
-  background: linear-gradient(135deg, var(--gold), #ffb347);
-  border: none;
-  border-radius: 6px;
-  clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px));
-  color: var(--bg-0);
-  font-family: var(--mono);
-  font-weight: 700;
-  letter-spacing: 2px;
-  cursor: pointer;
-  box-shadow: 0 0 16px rgba(255, 209, 102, 0.4);
-  transition: box-shadow 0.18s, transform 0.06s;
-}
-
-.turn-hub-end:hover {
-  box-shadow: 0 0 24px rgba(255, 209, 102, 0.6);
-}
-
-.turn-hub-end:active {
-  transform: scale(0.98);
-}
-
-.turn-hub-end-label {
-  font-size: 15px;
-}
-
-.turn-hub-end-key {
-  font-size: 10px;
-  opacity: 0.7;
-  letter-spacing: 1px;
+  box-shadow: 0 0 14px rgba(124, 255, 178, 0.3);
 }
 
 @media (max-width: 720px) {
-  .turn-hub {
-    width: 140px;
-    padding: 8px;
-    gap: 6px;
-  }
-
   .turn-hub-btn {
     padding: 6px 8px;
     font-size: 11px;
-  }
-}
-
-/* ── 좌상단 뷰 토글 탭 (기본/위험도/자원/점령 현황 오버레이) ── */
-.map-view-tabs {
-  position: absolute;
-  top: 14px;
-  left: 14px;
-  z-index: 16;
-  display: flex;
-  gap: 4px;
-  padding: 4px;
-  background: var(--panel);
-  backdrop-filter: blur(6px);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
-}
-
-.map-view-tab {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 6px 12px;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--dim);
-  font-family: var(--mono);
-  font-size: 11px;
-  letter-spacing: 0.5px;
-  white-space: nowrap;
-  cursor: pointer;
-  transition: 0.18s;
-}
-
-.map-view-tab:hover {
-  color: var(--text);
-  border-color: var(--line);
-}
-
-.map-view-tab.active {
-  color: var(--bg-0);
-  background: linear-gradient(180deg, var(--cyan), #27b9a8);
-  box-shadow: 0 0 14px rgba(58, 214, 196, 0.45);
-  font-weight: 600;
-}
-
-/* 액션 탭 — 다음 목표 / 이벤트 확인 (뷰 탭과 같은 줄, 골드 계열) */
-.map-view-tab--action {
-  color: #ffd166;
-  border-color: rgba(255, 209, 102, 0.3);
-}
-.map-view-tab--action:hover {
-  border-color: rgba(255, 209, 102, 0.6);
-  background: rgba(255, 209, 102, 0.08);
-}
-.map-view-tab-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 16px;
-  height: 16px;
-  padding: 0 4px;
-  margin-left: 4px;
-  border-radius: 8px;
-  background: #dc2626;
-  color: #fff;
-  font-size: 10px;
-  font-weight: 700;
-  line-height: 1;
-}
-
-/* 활성 뷰 설명 — 토글 바로 아래에 한 줄로만 표시 (가벼운 안내) */
-.map-view-caption {
-  position: absolute;
-  top: 54px;
-  left: 14px;
-  z-index: 16;
-  max-width: min(360px, calc(100% - 28px));
-  padding: 5px 10px;
-  background: rgba(6, 10, 28, 0.85);
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  color: var(--dim);
-  font-family: var(--mono);
-  font-size: 11px;
-  line-height: 1.4;
-  pointer-events: none;
-  animation: map-view-caption-in 0.18s ease;
-}
-
-@keyframes map-view-caption-in {
-  from { opacity: 0; transform: translateY(-6px); }
-  to   { opacity: 1; transform: none; }
-}
-
-@media (max-width: 720px) {
-  .map-view-tabs {
-    top: 8px;
-    left: 8px;
-    gap: 2px;
-    padding: 3px;
-  }
-
-  .map-view-tab {
-    padding: 5px 8px;
-    font-size: 10px;
-  }
-
-  .map-view-tab-label {
-    display: none;
-  }
-
-  .map-view-caption {
-    top: 44px;
-    left: 8px;
-    font-size: 10px;
   }
 }

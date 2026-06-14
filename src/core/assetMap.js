@@ -6,11 +6,12 @@ const ASSET_BASE = '/assets/'
 
 // 키 접두사를 검사하는 순서가 중요하다 — 더 구체적인 규칙을 먼저 둔다.
 const EMOJI_RULES = [
-  [/^unit_scout/, '🛸'],
-  [/^unit_fighter/, '🚀'],
+  [/^unit_gunship/, '🛸'],
+  [/^unit_frigate/, '🚀'],
   [/^unit_cruiser/, '🚢'],
+  [/^unit_destroyer/, '🛰️'],
   [/^unit_battleship/, '🛡️'],
-  [/^unit_carrier/, '🌌'],
+  [/^unit_battlecruiser/, '🌌'],
   [/^unit_drone/, '🤖'],
   [/^unit_thorn/, '🦔'],
   [/^unit_/, '✈️'],
@@ -63,7 +64,7 @@ export function getEmojiFallback(key) {
   return rule ? rule[1] : DEFAULT_EMOJI
 }
 
-// 컴포넌트에서: const { url, emoji } = getAsset('unit_scout_ally')
+// 컴포넌트에서: const { url, emoji } = getAsset('unit_gunship_ally')
 // <img src={url} onError={...emoji 표시...}>
 export function getAsset(key) {
   return { url: getAssetUrl(key), emoji: getEmojiFallback(key) }

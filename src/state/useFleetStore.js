@@ -8,8 +8,8 @@ import { applyXpGain, canPromote, promoteUnit } from '../core/growth'
 // 전투 결과(XP 획득)와 함대 편성 화면(전직·장착)이 모두 이 스토어를 갱신·조회한다.
 
 const STARTING_ROSTER = [
-  { instanceId: 'scout-1', shipId: 'scout', aceId: null },
-  { instanceId: 'fighter-1', shipId: 'fighter', aceId: 'kai' },
+  { instanceId: 'gunship-1', shipId: 'gunship', aceId: null },
+  { instanceId: 'frigate-1', shipId: 'frigate', aceId: 'kai' },
   { instanceId: 'cruiser-1', shipId: 'cruiser', aceId: 'sera' },
 ]
 
@@ -88,6 +88,22 @@ export const useFleetStore = create((set, get) => ({
     set((state) => ({
       ownedItems: { ...state.ownedItems, [itemId]: (state.ownedItems[itemId] ?? 0) + count },
     }))
+  },
+
+  // 보유 중인 미장착 여분 아이템을 모항 상점 sellRate(환율)에 따라 SC로 되판다(MOD-12).
+  sellItem: (itemId) => {
+    const owned = get().ownedItems[itemId] ?? 0
+    if (owned <= get().equippedCount(itemId)) return false // 장착 중인 것만 있으면 판매 불가
+
+    const item = getItemById(itemId)
+    if (!item?.price) return false // 소모품 중 price 없는 항목·유니크는 판매 대상 아님
+
+    const shops = useDataStore.getState().data?.shops?.shops ?? []
+    const sellRate = shops.find((s) => s.type === 'base')?.sellRate ?? 0.6
+
+    set((state) => ({ ownedItems: { ...state.ownedItems, [itemId]: owned - 1 } }))
+    useResourceStore.getState().earn({ sc: Math.floor(item.price * sellRate) })
+    return true
   },
 
   // 함대 전체에서 해당 아이템을 장착 중인 수 — "보유 수량보다 많이 장착할 수 없다" 판정에 쓰인다.

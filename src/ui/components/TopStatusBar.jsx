@@ -32,8 +32,6 @@ export default function TopStatusBar({ view, onNavigate, inBattle }) {
         <span className="app-topbar-logo">7<span className="accent">★</span></span>
       </button>
 
-      <ResourceHud compact />
-
       <div className="app-topbar-status">
         <span className="app-topbar-stat app-topbar-stat--turn" title="현재 턴">
           <span className="app-topbar-stat-icon">⏱</span>턴 <b>{turn}</b>
@@ -43,10 +41,12 @@ export default function TopStatusBar({ view, onNavigate, inBattle }) {
         </span>
       </div>
 
+      <ResourceHud compact />
+
       {navOpen && (
         <>
           <div className="app-topbar-backdrop" onClick={() => setNavOpen(false)} />
-          <nav className="app-topbar-drawer">
+          <nav className="app-topbar-drawer holo-panel">
             {NAV_ITEMS.map((item) => (
               <button
                 key={item.key}
