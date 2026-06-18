@@ -15,71 +15,83 @@ import { getEmojiFallback } from '../../core/assetMap'
 import CutinManager from '../effects/CutinManager'
 import { useBattleStore } from '../../state/useBattleStore'
 
-const COLS = 12
-const ROWS = 10
+// COLS/ROWS는 init()에서 gridCols/gridRows로 동적 설정된다 (기본값 20×16)
+let COLS = 20
+let ROWS = 16
 let CELL = 80
 
-// 지형 배치 — 각 지형 타입별 [x, y] 좌표 목록
-const ASTEROID_CELLS      = [[5,2],[6,2],[5,3],[8,6],[8,7],[9,7]]
-const DEBRIS_CELLS        = [[3,6],[4,6],[4,7],[7,2],[7,3]]
-const NEBULA_CELLS        = [[2,4],[3,4]]
-const ASTEROID_FIELD_CELLS= [[6,5],[7,5]]
-const MINEFIELD_CELLS     = [[9,2],[10,3]]
-const PLASMA_STORM_CELLS  = [[4,8],[5,8]]
+// 기준 그리드(20×16) 좌표를 현재 COLS×ROWS로 비례 변환 (중복 제거 포함)
+function scaleCells(cells) {
+  const seen = new Set()
+  return cells.map(([x, y]) => [
+    Math.min(Math.round(x * COLS / 20), COLS - 1),
+    Math.min(Math.round(y * ROWS / 16), ROWS - 1),
+  ]).filter(([x, y]) => { const k = `${x},${y}`; if (seen.has(k)) return false; seen.add(k); return true })
+}
+
+// 기준 단일 좌표를 현재 그리드 크기로 변환
+function scalePos(x, y) {
+  return {
+    x: Math.min(Math.round(x * COLS / 20), COLS - 1),
+    y: Math.min(Math.round(y * ROWS / 16), ROWS - 1),
+  }
+}
+
+// 지형 배치 기준 좌표 (20×16 기준)
+const BASE_ASTEROID_CELLS      = [[5,2],[6,2],[5,3],[8,6],[8,7],[9,7]]
+const BASE_DEBRIS_CELLS        = [[3,6],[4,6],[4,7],[7,2],[7,3]]
+const BASE_NEBULA_CELLS        = [[2,4],[3,4]]
+const BASE_ASTEROID_FIELD_CELLS= [[6,5],[7,5]]
+const BASE_MINEFIELD_CELLS     = [[9,2],[10,3]]
+const BASE_PLASMA_STORM_CELLS  = [[4,8],[5,8]]
 
 function buildTerrainLayout(threatLevel = 1) {
   const layout = Array.from({ length: ROWS }, () => new Array(COLS).fill('empty'))
 
   // 위협1-2: 평지 — 소행성 2칸만 (입문, 전략 부담 최소)
   if (threatLevel <= 2) {
-    for (const [x, y] of [[5,4],[5,5]]) layout[y][x] = 'asteroid'
+    for (const [x, y] of scaleCells([[5,4],[5,5]])) layout[y][x] = 'asteroid'
     return layout
   }
 
   // 위협3-4: 가벼운 지형 — 소행성 + 잔해 + 성운
   if (threatLevel <= 4) {
-    for (const [x, y] of [[5,2],[6,2],[8,6]]) layout[y][x] = 'asteroid'
-    for (const [x, y] of [[3,6],[4,6]])        layout[y][x] = 'debris'
-    for (const [x, y] of [[2,4],[3,4]])        layout[y][x] = 'nebula'
+    for (const [x, y] of scaleCells([[5,2],[6,2],[8,6]])) layout[y][x] = 'asteroid'
+    for (const [x, y] of scaleCells([[3,6],[4,6]]))        layout[y][x] = 'debris'
+    for (const [x, y] of scaleCells([[2,4],[3,4]]))        layout[y][x] = 'nebula'
     return layout
   }
 
   // 위협5-6: 중간 지형 — 소행성 + 잔해 + 성운 + 소행성대
   if (threatLevel <= 6) {
-    for (const [x, y] of ASTEROID_CELLS)       layout[y][x] = 'asteroid'
-    for (const [x, y] of DEBRIS_CELLS)         layout[y][x] = 'debris'
-    for (const [x, y] of NEBULA_CELLS)         layout[y][x] = 'nebula'
-    for (const [x, y] of ASTEROID_FIELD_CELLS) layout[y][x] = 'asteroid_field'
+    for (const [x, y] of scaleCells(BASE_ASTEROID_CELLS))       layout[y][x] = 'asteroid'
+    for (const [x, y] of scaleCells(BASE_DEBRIS_CELLS))         layout[y][x] = 'debris'
+    for (const [x, y] of scaleCells(BASE_NEBULA_CELLS))         layout[y][x] = 'nebula'
+    for (const [x, y] of scaleCells(BASE_ASTEROID_FIELD_CELLS)) layout[y][x] = 'asteroid_field'
     return layout
   }
 
   // 위협7+: 풀 지형 — 지뢰밭·플라즈마 폭풍까지 포함
-  for (const [x, y] of ASTEROID_CELLS)       layout[y][x] = 'asteroid'
-  for (const [x, y] of DEBRIS_CELLS)         layout[y][x] = 'debris'
-  for (const [x, y] of NEBULA_CELLS)         layout[y][x] = 'nebula'
-  for (const [x, y] of ASTEROID_FIELD_CELLS) layout[y][x] = 'asteroid_field'
-  for (const [x, y] of MINEFIELD_CELLS)      layout[y][x] = 'minefield'
-  for (const [x, y] of PLASMA_STORM_CELLS)   layout[y][x] = 'plasma_storm'
+  for (const [x, y] of scaleCells(BASE_ASTEROID_CELLS))       layout[y][x] = 'asteroid'
+  for (const [x, y] of scaleCells(BASE_DEBRIS_CELLS))         layout[y][x] = 'debris'
+  for (const [x, y] of scaleCells(BASE_NEBULA_CELLS))         layout[y][x] = 'nebula'
+  for (const [x, y] of scaleCells(BASE_ASTEROID_FIELD_CELLS)) layout[y][x] = 'asteroid_field'
+  for (const [x, y] of scaleCells(BASE_MINEFIELD_CELLS))      layout[y][x] = 'minefield'
+  for (const [x, y] of scaleCells(BASE_PLASMA_STORM_CELLS))   layout[y][x] = 'plasma_storm'
   return layout
 }
 
-// 아군 시작 위치 — useFleetStore의 로스터 순서에 그대로 매핑된다(MOD-5: 로스터 기반 생성으로 교체).
-const ALLY_START_POSITIONS = [
-  { x: 1, y: 5 },
-  { x: 1, y: 7 },
-  { x: 1, y: 3 },
-]
-
-// 적 출현 위치 슬롯 — core/encounter.js가 노드의 적 구성을 이 자리에 순서대로 배치한다(MOD-6).
-// 가장 큰 편성(관문 요새 s7: 4기)도 겹치지 않도록 충분히 마련.
-const ENEMY_SPAWN_POSITIONS = [
-  { x: 10, y: 2 },
-  { x: 10, y: 7 },
-  { x: 9, y: 4 },
-  { x: 9, y: 5 },
-  { x: 11, y: 3 },
-  { x: 11, y: 6 },
-]
+// 아군/적 배치 위치는 COLS/ROWS 결정 후 생성 (init() 이후 호출)
+function getAllyStartPositions() {
+  return [scalePos(2, 8), scalePos(2, 10), scalePos(2, 6)]
+}
+function getEnemySpawnPositions() {
+  return [
+    scalePos(17, 7), scalePos(17, 11),
+    scalePos(16, 7), scalePos(16, 10),
+    scalePos(18, 8), scalePos(18, 11),
+  ]
+}
 
 const SIDE_COLOR = {
   ally: { ring: 0x3ad6c4, fill: 0x123a38, label: '#3ad6c4' },
@@ -89,9 +101,12 @@ const SIDE_COLOR = {
 const HIGHLIGHT_COLOR = 0x3ad6c4
 const HIGHLIGHT_ALPHA = 0.28
 const ABILITY_HIGHLIGHT_COLOR = 0xffd166
-const SELECT_RING_COLOR = 0xffd166
-const GRID_LINE_COLOR = 0x1e3d6b
-const ISO_TILE_RATIO = 0.65  // hh = hw * ISO_TILE_RATIO (0.5=납작, 0.65=적당, 1.0=정사각)
+const SELECT_RING_COLOR = 0x00f0ff  // 선택 링 — 전기 사이안, 우주 테마에 어울리는 강한 발광색
+const GRID_LINE_COLOR  = 0x4fb8ff  // XCOM 스타일 사이안 격자선
+const GRID_LINE_ALPHA  = 0.10
+const TILE_FILL_ALPHA  = 0.18      // 반투명 — 배경 성운이 바닥으로 보임
+const TILE_BLOCK_ALPHA = 0.55      // 통행불가 타일은 약간 더 진하게
+const ISO_TILE_RATIO = 0.92  // 기본 시야각 — 우클릭 드래그로 실시간 조정 가능
 
 let HP_BAR_WIDTH = CELL * 0.56
 const HP_BAR_HEIGHT = 4
@@ -109,7 +124,7 @@ const BRACKET_COLOR = 0x3ad6c4
 const BRACKET_THICK = 2.5
 
 const DAMAGE_TEXT_COLOR = '#ffd166'
-const MISS_TEXT_COLOR = '#6b7aa8'
+const MISS_TEXT_COLOR = '#c8d8ff'
 const HEAL_TEXT_COLOR = '#7dffb0'
 const FINISHER_READY_COLOR = '#ffd166'
 const FINISHER_WAIT_COLOR = '#5a6a96'
@@ -136,9 +151,12 @@ export default class BattleScene extends Phaser.Scene {
     this.load.image('bg_space', '/assets/bg_space.jpg')
   }
 
-  init({ ships, combatRules, skills, aces, enemies, items, node, onVictory, onExit, onEnding, onGameOver }) {
+  init({ ships, combatRules, skills, aces, enemies, items, node, gridCols, gridRows, onVictory, onExit, onEnding, onGameOver }) {
+    // 그리드 크기 설정 (연구소 레벨에 따라 BattleScreen에서 결정)
+    COLS = gridCols ?? 20
+    ROWS = gridRows ?? 16
     // this.scene.restart()에 그대로 재전달하기 위해 보관(MOD-6: 노드·콜백도 함께 — "같은 전투 다시 시작"에 필요)
-    this.initArgs = { ships, combatRules, skills, aces, enemies, items, node, onVictory, onExit, onEnding, onGameOver }
+    this.initArgs = { ships, combatRules, skills, aces, enemies, items, node, gridCols, gridRows, onVictory, onExit, onEnding, onGameOver }
     this.shipsById = new Map(ships.map((s) => [s.id, s]))
     this.combatRules = combatRules
     this.allSkills = skills
@@ -180,7 +198,7 @@ export default class BattleScene extends Phaser.Scene {
     // 그리드 시각 높: (COLS + ROWS) * hh     = 22 * hh  (각 타일 상하 팁 포함)
     const HUD_TOP    = 62   // 상단 HUD 여백
     const MARGIN_BOT = 18   // 하단 여백
-    const availW = this.scale.width  * 0.90
+    const availW = this.scale.width  * 0.98
     const availH = this.scale.height - HUD_TOP - MARGIN_BOT
 
     // 화면 최적 크기의 1.5× — 그리드가 화면보다 커지며 카메라 드래그로 탐색
@@ -195,21 +213,25 @@ export default class BattleScene extends Phaser.Scene {
     HP_BAR_WIDTH = Math.round(iso_hw * 1.6)
 
     // ── 그리드 중앙 정렬 ────────────────────────────────────────────
-    // 수평: 그리드의 시각적 중심 = cx + (COLS - ROWS)/2 * hw = cx + hw  → cx = screen_cx - hw
-    // 수직: cy - hh(상단 팁) 를 available 영역 내 수직 중앙에 배치
-    const gridFullH  = (COLS + ROWS) * iso_hh            // 22 * hh
+    // cx/cy = 그리드 중심 (COLS/2, ROWS/2) 의 화면 좌표
+    // 회전 시에도 이 점이 화면 중앙에 고정된다
+    const gridFullH  = (COLS + ROWS) * iso_hh
     const topPad     = Math.max(0, (availH - gridFullH) / 2)
     this.iso = {
       hw: iso_hw,
       hh: iso_hh,
-      cx: Math.round(this.scale.width / 2 - iso_hw),    // COLS-ROWS 비대칭 보정
-      cy: Math.round(HUD_TOP + iso_hh + topPad),        // 수직 중앙 정렬
+      cx: Math.round(this.scale.width / 2),
+      cy: Math.round(HUD_TOP + iso_hh + topPad + (COLS + ROWS) / 2 * iso_hh),
     }
 
-    // ── 우주 배경 이미지 (카메라에 고정) ────────────────────────────
-    const bg = this.add.image(this.scale.width / 2, this.scale.height / 2, 'bg_space')
-    bg.setDisplaySize(this.scale.width, this.scale.height)
-    bg.setDepth(-10).setScrollFactor(0).setAlpha(0.88)
+    // ── 우주 배경 이미지 (월드 좌표 + 시차) ─────────────────────────
+    // 그리드 중앙에 배치, 화면의 3배 크기로 카메라 이동 여유 확보
+    // scrollFactor(0.15) → 카메라가 100px 이동 시 배경은 15px만 이동(원근감/몰입감)
+    const bgCX = this.iso.cx
+    const bgCY = this.iso.cy
+    const bg = this.add.image(bgCX, bgCY, 'bg_space')
+    bg.setDisplaySize(this.scale.width * 3.2, this.scale.height * 3.2)
+    bg.setDepth(-10).setScrollFactor(0.15).setAlpha(0.92)
 
     // ── 그리드 타일 생성 ─────────────────────────────────────────
     this.cellRects = []
@@ -223,15 +245,16 @@ export default class BattleScene extends Phaser.Scene {
     this.selectionGfx = null
     this.targetingGfx = null
 
+    const allyStartPos = getAllyStartPositions()
     const allyPlacements = this.roster.map((entry, index) => {
-      const pos = ALLY_START_POSITIONS[index % ALLY_START_POSITIONS.length]
+      const pos = allyStartPos[index % allyStartPos.length]
       return { side: 'ally', instanceId: entry.instanceId, shipId: entry.shipId, aceId: entry.aceId, x: pos.x, y: pos.y }
     })
     const enemyPlacements = buildEncounterPlacements(this.node, {
       enemiesById: this.enemiesById,
       bossesById: this.bossesById,
       shipsById: this.shipsById,
-      positions: ENEMY_SPAWN_POSITIONS,
+      positions: getEnemySpawnPositions(),
     })
     ;[...allyPlacements, ...enemyPlacements].forEach((placement) => this.spawnUnit(placement))
 
@@ -264,23 +287,35 @@ export default class BattleScene extends Phaser.Scene {
     // ── 카메라 드래그 스크롤 (XCOM 스타일) ───────────────────────
     // 그리드 전체가 카메라 월드보다 크게 설정되므로 드래그로 탐색 가능
     const camMargin = iso_hw * 3
-    const gridLeft   = this.iso.cx - (ROWS - 1) * iso_hw - camMargin
-    const gridRight  = this.iso.cx + (COLS)     * iso_hw + camMargin
-    const gridTop    = this.iso.cy - iso_hh                - camMargin
-    const gridBottom = this.iso.cy + (COLS + ROWS - 1) * iso_hh + camMargin
-    this.cameras.main.setBounds(gridLeft, gridTop, gridRight - gridLeft, gridBottom - gridTop)
+    // 360° 회전 + 줌아웃(최소 0.35×)을 감안해 중심 대칭으로 넉넉하게 설정
+    const halfW = (COLS + ROWS) * iso_hw + camMargin * 4
+    const halfH = (COLS + ROWS) * iso_hh + camMargin * 4
+    this.cameras.main.setBounds(
+      this.iso.cx - halfW, this.iso.cy - halfH,
+      halfW * 2, halfH * 2,
+    )
     // 카메라 초기 위치: 그리드 중앙
-    const gridCenterX = this.iso.cx + iso_hw / 2
-    const gridCenterY = this.iso.cy + (COLS + ROWS - 2) / 2 * iso_hh
-    this.cameras.main.centerOn(gridCenterX, gridCenterY)
+    this.cameras.main.centerOn(this.iso.cx, this.iso.cy)
 
     this._isDragging   = false
     this._dragOriginX  = 0
     this._dragOriginY  = 0
     this._dragScrollX  = 0
     this._dragScrollY  = 0
+    this.viewAngle     = 1.0        // 우클릭 Y드래그: pitch (상하 시야각)
+    this.viewRotation  = Math.PI / 4  // 우클릭 X드래그: yaw (좌우 회전, 기본 45°)
+    this._rightDrag    = null  // { startX, startY, startAngle, startRotation }
+
+    // 브라우저 우클릭 컨텍스트 메뉴 억제
+    this.game.canvas.addEventListener('contextmenu', (e) => e.preventDefault())
 
     this.input.on('pointerdown', (p) => {
+      if (p.rightButtonDown()) {
+        // 우클릭: 시야각(Y) + 좌우 회전(X) 드래그 시작
+        this._rightDrag = { startX: p.x, startY: p.y, startAngle: this.viewAngle, startRotation: this.viewRotation }
+        return
+      }
+      // 좌클릭: 카메라 드래그
       this._isDragging  = false
       this._dragOriginX = p.x
       this._dragOriginY = p.y
@@ -288,7 +323,27 @@ export default class BattleScene extends Phaser.Scene {
       this._dragScrollY = this.cameras.main.scrollY
     })
     this.input.on('pointermove', (p) => {
-      if (!p.isDown) return
+      // 우클릭 드래그: Y → pitch(상하), X → yaw(좌우 회전)
+      if (this._rightDrag) {
+        if (!p.rightButtonDown()) { this._rightDrag = null; return }
+        const dy = p.y - this._rightDrag.startY
+        const dx = p.x - this._rightDrag.startX
+        // pitch: 0.3(탑뷰에 가까움) ~ 1.05(표준 아이소) — 옆면 노출 방지
+        // 위로 드래그 = 탑뷰, 아래로 드래그 = 사이드뷰 (일반적인 오빗 카메라 관례)
+        const newAngle = Phaser.Math.Clamp(this._rightDrag.startAngle + dy * 0.004, 0.3, 1.05)
+        // yaw: 360° 자유 회전 (wrap-around)
+        const rawRot = this._rightDrag.startRotation - dx * 0.005
+        const newRotation = ((rawRot % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2)
+        const changed = Math.abs(newAngle - this.viewAngle) > 0.01 || Math.abs(newRotation - this.viewRotation) > 0.005
+        if (changed) {
+          this.viewAngle = newAngle
+          this.viewRotation = newRotation
+          this.rebuildTileGeometry()
+        }
+        return
+      }
+      // 좌클릭 드래그: 카메라 스크롤
+      if (!p.leftButtonDown()) return
       const dx = p.x - this._dragOriginX
       const dy = p.y - this._dragOriginY
       if (!this._isDragging && (Math.abs(dx) > 7 || Math.abs(dy) > 7)) {
@@ -302,8 +357,17 @@ export default class BattleScene extends Phaser.Scene {
       }
     })
     this.input.on('pointerup', () => {
+      if (this._rightDrag) { this._rightDrag = null; return }
       // 50ms 후 isDragging 해제 — pointerup 에 등록된 다른 핸들러들이 먼저 실행된 뒤 초기화
       this.time.delayedCall(50, () => { this._isDragging = false })
+    })
+
+    // 마우스 휠 줌 (Ctrl+휠도 동일하게 처리)
+    this.zoomLevel = 1.0
+    this.input.on('wheel', (_p, _go, _dx, deltaY) => {
+      const step = deltaY > 0 ? -0.1 : 0.1
+      this.zoomLevel = Phaser.Math.Clamp(this.zoomLevel + step, 0.35, 2.5)
+      this.cameras.main.setZoom(this.zoomLevel)
     })
 
     // 자동전투 토글은 React UI(BattleScreen)에서 관리 — 스토어 변경을 구독해 this.autoBattle 동기화
@@ -341,53 +405,101 @@ export default class BattleScene extends Phaser.Scene {
     )
   }
 
-  // ----- 좌표 변환 (아이소메트릭) -----
+  // ----- 좌표 변환 (아이소메트릭 + yaw 회전) -----
+  // rot = PI/4 일 때 기존 45° 표준 아이소와 동일
+  // rot → 0 : 동쪽에서 바라보는 뷰, rot → PI/2 : 남쪽에서 바라보는 뷰
   cellToWorld(x, y) {
+    const rot = this.viewRotation ?? Math.PI / 4
+    const hw  = this.iso.hw
+    const hh  = this.iso.hh
+    const s   = Math.SQRT2
+    const gx  = x - COLS / 2   // 그리드 중심 기준 상대 좌표
+    const gy  = y - ROWS / 2
     return {
-      px: this.iso.cx + (x - y) * this.iso.hw,
-      py: this.iso.cy + (x + y) * this.iso.hh,
+      px: this.iso.cx + (gx * Math.cos(rot) - gy * Math.sin(rot)) * hw * s,
+      py: this.iso.cy + (gx * Math.sin(rot) + gy * Math.cos(rot)) * hh * s,
     }
   }
 
-  // ----- 그리드 셀 (아이소메트릭 마름모) -----
+  // ----- 그리드 셀 (아이소메트릭 마름모 — Graphics 방식: WebGL 삼각분할 선 없음) -----
   createCell(x, y) {
     const terrain = getTerrain(this.terrain[y][x])
     const { px, py } = this.cellToWorld(x, y)
     const hw = this.iso.hw
     const hh = this.iso.hh
+    const baseAlpha = terrain.passable ? TILE_FILL_ALPHA : TILE_BLOCK_ALPHA
 
-    // 마름모 다각형: 상·우·하·좌 꼭짓점
-    const pts = [0, -hh, hw, 0, 0, hh, -hw, 0]
-    const poly = this.add.polygon(px, py, pts, terrain.color, 1)
-    poly.setStrokeStyle(1, GRID_LINE_COLOR, 0.28)
-    poly.setData('baseColor', terrain.color)
-    poly.setInteractive({ useHandCursor: true })
-    poly.on('pointerup', () => { if (!this._isDragging) this.handleCellClick(x, y) })
+    // Graphics 객체 — fill + stroke를 직접 경로로 그려 삼각분할 아티팩트 없음
+    const g = this.add.graphics()
+    this._redrawTile(g, x, y, terrain.color, baseAlpha, GRID_LINE_ALPHA)
+    g.setDepth(0)
+    g.setData('baseColor', terrain.color)
+    g.setData('baseAlpha', baseAlpha)
 
-    if (terrain.id !== 'empty') {
-      poly.on('pointerover', () => {
-        if (!this.selected && !this.pendingAbility && !this.busy)
-          this.hudText.setText(`[지형] ${terrain.label}  —  ${terrain.desc}`)
-      })
-      poly.on('pointerout', () => {
-        if (!this.selected && !this.pendingAbility && !this.busy)
-          this.refreshHud()
-      })
-    }
+    // 충돌 판정: 회전을 반영한 마름모 폴리곤 히트 영역
+    const hitGeom = this._makeTileHitGeom(x, y)
+    g.setInteractive({ hitArea: hitGeom, hitAreaCallback: Phaser.Geom.Polygon.Contains, useHandCursor: true })
+    g.setData('hitArea', hitGeom)
+
+    g.on('pointerup', () => { if (!this._isDragging && !this._rightDrag) this.handleCellClick(x, y) })
+    g.on('pointerover', () => {
+      if (!this.highlighted.has(`${x},${y}`)) {
+        this._redrawTile(g, x, y, g.getData('baseColor'), g.getData('baseAlpha'), 0.42)
+      }
+      if (terrain.id !== 'empty' && !this.selected && !this.pendingAbility && !this.busy)
+        this.hudText.setText(`[지형] ${terrain.label}  —  ${terrain.desc}`)
+    })
+    g.on('pointerout', () => {
+      if (!this.highlighted.has(`${x},${y}`)) {
+        this._redrawTile(g, x, y, g.getData('baseColor'), g.getData('baseAlpha'), GRID_LINE_ALPHA)
+      }
+      if (terrain.id !== 'empty' && !this.selected && !this.pendingAbility && !this.busy)
+        this.refreshHud()
+    })
 
     // 지형 글리프 (작게)
     if (terrain.glyph && terrain.passable) {
       const gs = Math.max(10, Math.floor(hw * 0.44))
-      this.add.text(px, py - hh * 0.15, terrain.glyph, { fontSize: `${gs}px` })
+      const t = this.add.text(px, py - hh * 0.15, terrain.glyph, { fontSize: `${gs}px` })
         .setOrigin(0.5).setAlpha(0.7).setDepth(1)
+      if (!this.terrainGlyphList) this.terrainGlyphList = []
+      this.terrainGlyphList.push(t)
     }
 
     // 통행 불가 지형 → 아이소메트릭 엄폐물 블록
-    if (!terrain.passable) {
-      this.drawCoverBlock(px, py)
-    }
+    if (!terrain.passable) this.drawCoverBlock(px, py)
 
-    return poly
+    return g
+  }
+
+  // 현재 viewRotation 기준으로 타일 (x,y) 의 히트 폴리곤을 생성/갱신
+  _makeTileHitGeom(x, y) {
+    const { px: tx, py: ty } = this.cellToWorld(x - 0.5, y - 0.5)
+    const { px: rx, py: ry } = this.cellToWorld(x + 0.5, y - 0.5)
+    const { px: bx, py: by } = this.cellToWorld(x + 0.5, y + 0.5)
+    const { px: lx, py: ly } = this.cellToWorld(x - 0.5, y + 0.5)
+    return new Phaser.Geom.Polygon([tx, ty, rx, ry, bx, by, lx, ly])
+  }
+
+  // 타일 경로 재그리기 헬퍼 — 그리드 좌표(gridX, gridY)를 받아 꼭짓점을 cellToWorld로 계산
+  // yaw 회전 후에도 정확한 마름모 형태를 유지한다
+  _redrawTile(g, gridX, gridY, fillColor, fillAlpha, lineAlpha,
+              lineColor = GRID_LINE_COLOR, lineWidth = 0.8) {
+    const { px: tx, py: ty } = this.cellToWorld(gridX - 0.5, gridY - 0.5)  // 상단
+    const { px: rx, py: ry } = this.cellToWorld(gridX + 0.5, gridY - 0.5)  // 우측
+    const { px: bx, py: by } = this.cellToWorld(gridX + 0.5, gridY + 0.5)  // 하단
+    const { px: lx, py: ly } = this.cellToWorld(gridX - 0.5, gridY + 0.5)  // 좌측
+    g.clear()
+    g.fillStyle(fillColor, fillAlpha)
+    g.lineStyle(lineWidth, lineColor, lineAlpha)
+    g.beginPath()
+    g.moveTo(tx, ty)
+    g.lineTo(rx, ry)
+    g.lineTo(bx, by)
+    g.lineTo(lx, ly)
+    g.closePath()
+    g.fillPath()
+    g.strokePath()
   }
 
   // 아이소메트릭 3D 엄폐물 블록 (상면 + 우면 + 좌면)
@@ -397,6 +509,8 @@ export default class BattleScene extends Phaser.Scene {
     const lift = hh * 1.5  // 블록 높이
 
     const g = this.add.graphics().setDepth(2)
+    if (!this.coverBlockGfxList) this.coverBlockGfxList = []
+    this.coverBlockGfxList.push(g)
 
     // 상면 (마름모)
     g.fillStyle(COVER_TOP, 1)
@@ -488,7 +602,7 @@ export default class BattleScene extends Phaser.Scene {
     const apBarFg = this.add.rectangle(-HP_BAR_WIDTH / 2, apBarOffY, HP_BAR_WIDTH, HP_BAR_HEIGHT - 1, AP_BAR_COLOR)
       .setOrigin(0, 0.5)
 
-    // 이름 레이블 (하단, 짧게)
+    // 이름 레이블 (하단, 선택 시만 표시)
     const levelPart = entry ? ` Lv.${ship.level}` : ''
     const acePart = ace ? ` · ${ace.name}` : ''
     const labelText = `${ship.name}${levelPart}${acePart}`
@@ -496,14 +610,14 @@ export default class BattleScene extends Phaser.Scene {
       fontFamily: 'Share Tech Mono, monospace',
       fontSize: `${Math.max(8, Math.round(hw * 0.24))}px`,
       color: palette.label,
-    }).setOrigin(0.5, 0)
+    }).setOrigin(0.5, 0).setAlpha(0)
 
-    // 상태 레이블 (AP/TP 숫자)
+    // 상태 레이블 (AP/TP 숫자, 선택 시만 표시)
     const statusLabel = this.add.text(0, radius + 4 + Math.max(8, Math.round(hw * 0.24)) + 2, '', {
       fontFamily: 'Share Tech Mono, monospace',
       fontSize: `${Math.max(7, Math.round(hw * 0.2))}px`,
       color: STATUS_LABEL_COLOR,
-    }).setOrigin(0.5, 0)
+    }).setOrigin(0.5, 0).setAlpha(0)
 
     const container = this.add.container(px, py, [ring, hpBarBg, hpBarFg, apBarBg, apBarFg, glyph, label, statusLabel])
     container.setSize(radius * 2, radius * 2)
@@ -531,6 +645,7 @@ export default class BattleScene extends Phaser.Scene {
       ring,
       hpBarFg,
       apBarFg,
+      label,
       statusLabel,
     }
     container.on('pointerup', (_pointer, _lx, _ly, event) => {
@@ -625,7 +740,20 @@ export default class BattleScene extends Phaser.Scene {
   selectUnit(unit) {
     this.clearSelection()
     this.selected = unit
-    unit.ring.setStrokeStyle(3, SELECT_RING_COLOR, 1)
+    unit.ring.setStrokeStyle(4, SELECT_RING_COLOR, 1)
+    unit.label?.setAlpha(1)
+    unit.statusLabel?.setAlpha(1)
+    // 선택 링 펄스 — 스케일+알파로 발광하는 깜빡임
+    unit._selectionTween = this.tweens.add({
+      targets: unit.ring,
+      alpha: 0.35,
+      scaleX: 1.3,
+      scaleY: 1.3,
+      duration: 680,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut',
+    })
 
     const range = computeMovementRange({ x: unit.gridX, y: unit.gridY }, unit.ship.mov, (cx, cy) =>
       this.isPassable(cx, cy),
@@ -645,8 +773,16 @@ export default class BattleScene extends Phaser.Scene {
 
   clearSelection() {
     if (this.selected) {
+      // ring 펄스 tween 종료 + 상태 복원
+      if (this.selected._selectionTween) {
+        this.tweens.killTweensOf(this.selected.ring)
+        this.selected._selectionTween = null
+        this.selected.ring.setAlpha(1).setScale(1)
+      }
       const palette = SIDE_COLOR[this.selected.side]
       this.selected.ring.setStrokeStyle(2, palette.ring, 0.9)
+      this.selected.label?.setAlpha(0)
+      this.selected.statusLabel?.setAlpha(0)
     }
     this.removeSelectionIndicator()
     this.clearHighlights()
@@ -656,32 +792,35 @@ export default class BattleScene extends Phaser.Scene {
     this.refreshHud()
   }
 
-  // L자형 코너 브래킷 — 아이소메트릭 마름모 꼭짓점 4곳에 배치
+  // 유닛 바닥 글로우 다이아몬드 — 타일 위에 빛나는 선택 표시 (yaw 회전 반영)
   drawSelectionIndicator(unit) {
     this.removeSelectionIndicator()
-    const { cx: ux, cy: uy } = { cx: unit.container.x, cy: unit.container.y }
-    const hw = this.iso.hw
-    const hh = this.iso.hh
-    const bs = Math.max(8, hw * 0.38)  // 브래킷 한 변의 길이
+    const gx = unit.gridX
+    const gy = unit.gridY
 
-    const g = this.add.graphics().setDepth(5)
-    g.lineStyle(BRACKET_THICK, BRACKET_COLOR, 1)
+    const g = this.add.graphics().setDepth(3)  // 유닛(4) 아래, 타일(0) 위
 
-    // 상 꼭짓점
-    g.beginPath(); g.moveTo(ux - bs * 0.55, uy - hh + bs * 0.3); g.lineTo(ux, uy - hh); g.lineTo(ux + bs * 0.55, uy - hh + bs * 0.3); g.strokePath()
-    // 우 꼭짓점
-    g.beginPath(); g.moveTo(ux + hw - bs * 0.3, uy - bs * 0.55); g.lineTo(ux + hw, uy); g.lineTo(ux + hw - bs * 0.3, uy + bs * 0.55); g.strokePath()
-    // 하 꼭짓점
-    g.beginPath(); g.moveTo(ux + bs * 0.55, uy + hh - bs * 0.3); g.lineTo(ux, uy + hh); g.lineTo(ux - bs * 0.55, uy + hh - bs * 0.3); g.strokePath()
-    // 좌 꼭짓점
-    g.beginPath(); g.moveTo(ux - hw + bs * 0.3, uy + bs * 0.55); g.lineTo(ux - hw, uy); g.lineTo(ux - hw + bs * 0.3, uy - bs * 0.55); g.strokePath()
+    const drawRing = (halfSize, lineWidth, alpha) => {
+      const h = halfSize
+      const { px: tx, py: ty } = this.cellToWorld(gx - h, gy - h)
+      const { px: rx, py: ry } = this.cellToWorld(gx + h, gy - h)
+      const { px: bx, py: by } = this.cellToWorld(gx + h, gy + h)
+      const { px: lx, py: ly } = this.cellToWorld(gx - h, gy + h)
+      g.lineStyle(lineWidth, BRACKET_COLOR, alpha)
+      g.beginPath()
+      g.moveTo(tx, ty)
+      g.lineTo(rx, ry)
+      g.lineTo(bx, by)
+      g.lineTo(lx, ly)
+      g.closePath()
+      g.strokePath()
+    }
 
-    // 발 아래 소형 링
-    g.lineStyle(1.5, BRACKET_COLOR, 0.55)
-    g.strokeCircle(ux, uy, hw * 0.28)
+    drawRing(0.45, 2.5, 1.0)   // 외곽 링
+    drawRing(0.36, 1.0, 0.55)  // 중간 링
+    drawRing(0.24, 1.0, 0.28)  // 내부 링
 
     this.selectionGfx = g
-    this.tweens.add({ targets: g, alpha: 0.35, duration: 560, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' })
   }
 
   removeSelectionIndicator() {
@@ -690,6 +829,66 @@ export default class BattleScene extends Phaser.Scene {
       this.selectionGfx.destroy()
       this.selectionGfx = null
     }
+  }
+
+  // 우클릭 드래그 시야각 변경 후 타일 지오메트리 재계산
+  rebuildTileGeometry() {
+    const baseHh = Math.round(this.iso.hw * ISO_TILE_RATIO)
+    this.iso.hh = Math.round(baseHh * this.viewAngle)
+    const hw = this.iso.hw
+    const hh = this.iso.hh
+
+    // 타일 Graphics 경로 + 히트 영역 갱신
+    for (let y = 0; y < ROWS; y++) {
+      for (let x = 0; x < COLS; x++) {
+        const g = this.cellRects[y][x]
+        const baseColor = g.getData('baseColor')
+        const baseAlpha = g.getData('baseAlpha')
+        const isHl = this.highlighted.has(`${x},${y}`)
+        const hlColor = this.pendingAbility ? ABILITY_HIGHLIGHT_COLOR : HIGHLIGHT_COLOR
+        if (isHl) {
+          this._redrawTile(g, x, y, hlColor, HIGHLIGHT_ALPHA, 0.9, hlColor, 1.5)
+        } else {
+          this._redrawTile(g, x, y, baseColor, baseAlpha, GRID_LINE_ALPHA)
+        }
+        // 히트 영역을 회전된 꼭짓점으로 교체
+        const { px: tx, py: ty } = this.cellToWorld(x - 0.5, y - 0.5)
+        const { px: rx, py: ry } = this.cellToWorld(x + 0.5, y - 0.5)
+        const { px: bx, py: by } = this.cellToWorld(x + 0.5, y + 0.5)
+        const { px: lx, py: ly } = this.cellToWorld(x - 0.5, y + 0.5)
+        const hitGeom = g.getData('hitArea')
+        if (hitGeom) hitGeom.setTo([tx, ty, rx, ry, bx, by, lx, ly])
+      }
+    }
+
+    // 엄폐물 블록 재생성
+    this.coverBlockGfxList?.forEach((b) => b.destroy())
+    this.coverBlockGfxList = []
+    // 지형 글리프 재생성
+    this.terrainGlyphList?.forEach((t) => t.destroy())
+    this.terrainGlyphList = []
+    for (let y = 0; y < ROWS; y++) {
+      for (let x = 0; x < COLS; x++) {
+        const terrain = getTerrain(this.terrain[y][x])
+        const { px, py } = this.cellToWorld(x, y)
+        if (terrain.glyph && terrain.passable) {
+          const gs = Math.max(10, Math.floor(hw * 0.44))
+          const t = this.add.text(px, py - hh * 0.15, terrain.glyph, { fontSize: `${gs}px` })
+            .setOrigin(0.5).setAlpha(0.7).setDepth(1)
+          this.terrainGlyphList.push(t)
+        }
+        if (!terrain.passable) this.drawCoverBlock(px, py)
+      }
+    }
+
+    // 유닛 위치 갱신
+    for (const unit of this.units) {
+      const { px, py } = this.cellToWorld(unit.gridX, unit.gridY)
+      unit.container.setPosition(px, py)
+    }
+
+    // 선택 표시 갱신
+    if (this.selected) this.drawSelectionIndicator(this.selected)
   }
 
   clearHighlights() {
@@ -701,13 +900,12 @@ export default class BattleScene extends Phaser.Scene {
   }
 
   setCellHighlight(x, y, on, color = HIGHLIGHT_COLOR) {
-    const poly = this.cellRects[y][x]
+    const g = this.cellRects[y][x]
     if (on) {
-      poly.setFillStyle(color, HIGHLIGHT_ALPHA)
-      poly.setStrokeStyle(2, color, 0.75)
+      this._redrawTile(g, x, y, color, HIGHLIGHT_ALPHA, 0.9, color, 1.5)
     } else {
-      poly.setFillStyle(poly.getData('baseColor'), 1)
-      poly.setStrokeStyle(1, GRID_LINE_COLOR, 0.28)
+      const baseAlpha = g.getData('baseAlpha') ?? TILE_FILL_ALPHA
+      this._redrawTile(g, x, y, g.getData('baseColor'), baseAlpha, GRID_LINE_ALPHA)
     }
   }
 
@@ -902,6 +1100,7 @@ export default class BattleScene extends Phaser.Scene {
       )
 
       if (!result.hit) {
+        this._dodgeUnit(target, unit)
         this.showFloatingText(target, '회피!', MISS_TEXT_COLOR)
         summaries.push(`${target.ship.name} 회피`)
         continue
@@ -1053,6 +1252,7 @@ export default class BattleScene extends Phaser.Scene {
     }
 
     if (!result.hit) {
+      this._dodgeUnit(defender, attacker)
       this.showFloatingText(defender, '회피!', MISS_TEXT_COLOR, finish)
       this.refreshHud(`${attacker.ship.name} → ${defender.ship.name} : 빗나감! (명중률 ${chancePct}%)`)
       return
@@ -1094,25 +1294,119 @@ export default class BattleScene extends Phaser.Scene {
   }
 
   showFloatingText(unit, text, color, onComplete) {
+    // 데미지 숫자(-N, 💥N)는 크고 흔들리게, 나머지는 작고 조용하게
+    const isBigHit = text.startsWith('-') || text.startsWith('💥')
+    const isMiss = text === '회피!'
+    const fontSize = isBigHit ? '62px' : isMiss ? '36px' : '20px'
+    const strokeThick = isBigHit ? 8 : isMiss ? 5 : 3
+    const fontFamily = (isBigHit || isMiss) ? 'Bangers, Impact, sans-serif' : 'Share Tech Mono, monospace'
+
     const popup = this.add
-      .text(unit.container.x, unit.container.y - CELL * 0.42, text, {
-        fontFamily: 'Share Tech Mono, monospace',
-        fontSize: '18px',
-        fontStyle: 'bold',
+      .text(unit.container.x, unit.container.y - CELL * 0.88, text, {
+        fontFamily,
+        fontSize,
+        fontStyle: 'normal',
         color,
+        stroke: '#000000',
+        strokeThickness: strokeThick,
       })
       .setOrigin(0.5)
       .setDepth(10)
 
+    if (isBigHit) {
+      // 피격 유닛 좌우 흔들기
+      this._shakeUnit(unit)
+
+      // 숫자 자체도 좌우 흔들고 난 뒤 위로 떠올라 사라짐
+      const origX = popup.x
+      this.tweens.add({
+        targets: popup,
+        x: origX + 12,
+        duration: 45,
+        yoyo: true,
+        repeat: 4,
+        ease: 'Sine.easeInOut',
+        onComplete: () => {
+          popup.setX(origX)
+          this.tweens.add({
+            targets: popup,
+            y: popup.y - 60,
+            alpha: 0,
+            duration: 680,
+            ease: 'Cubic.easeOut',
+            onComplete: () => { popup.destroy(); onComplete?.() },
+          })
+        },
+      })
+    } else {
+      this.tweens.add({
+        targets: popup,
+        y: popup.y - 34,
+        alpha: 0,
+        duration: 650,
+        ease: 'Cubic.easeOut',
+        onComplete: () => { popup.destroy(); onComplete?.() },
+      })
+    }
+  }
+
+  _shakeUnit(unit) {
+    if (!unit?.container) return
+    const origX = unit.container.x
     this.tweens.add({
-      targets: popup,
-      y: popup.y - 34,
-      alpha: 0,
-      duration: 650,
+      targets: unit.container,
+      x: origX - 10,
+      duration: 40,
+      yoyo: true,
+      repeat: 3,
+      ease: 'Sine.easeInOut',
+      onComplete: () => { unit.container.x = origX },
+    })
+  }
+
+  // 회피 애니메이션 — 공격자 방향의 수직으로 빠르게 대시한 뒤 원위치로 복귀
+  _dodgeUnit(unit, attacker) {
+    if (!unit?.container) return
+    const origX = unit.container.x
+    const origY = unit.container.y
+
+    // 공격자 → 방어자 방향 벡터
+    const { px: ax, py: ay } = this.cellToWorld(attacker.gridX, attacker.gridY)
+    const dx = origX - ax
+    const dy = origY - ay
+    const len = Math.sqrt(dx * dx + dy * dy) || 1
+
+    // 수직(lateral) 회피 방향 + 약간 뒤로 물러남
+    const perpX = -dy / len
+    const perpY = dx / len
+    const awayX = dx / len
+    const awayY = dy / len
+
+    // 홀수 턴 왼쪽 / 짝수 턴 오른쪽 — 같은 방향만 피하지 않도록 교번
+    const side = (attacker.gridX + attacker.gridY) % 2 === 0 ? 1 : -1
+    const dodgeX = origX + perpX * 22 * side + awayX * 10
+    const dodgeY = origY + perpY * 22 * side + awayY * 10
+
+    this.tweens.killTweensOf(unit.container)
+    this.tweens.add({
+      targets: unit.container,
+      x: dodgeX,
+      y: dodgeY,
+      scaleX: 0.82,
+      scaleY: 0.82,
+      duration: 75,
       ease: 'Cubic.easeOut',
       onComplete: () => {
-        popup.destroy()
-        onComplete?.()
+        this.tweens.add({
+          targets: unit.container,
+          x: origX,
+          y: origY,
+          scaleX: 1,
+          scaleY: 1,
+          duration: 240,
+          ease: 'Back.easeOut',
+          onComplete: () => unit.container.setPosition(origX, origY),
+        })
       },
     })
   }
@@ -1332,6 +1626,8 @@ export default class BattleScene extends Phaser.Scene {
     }).setOrigin(0.5).setDepth(301).setScrollFactor(0).setInteractive({ useHandCursor: true })
     btn.on('pointerup', () => { if (!this._isDragging) this.onGameOver?.() })
     this.tweens.add({ targets: btn, alpha: 0.4, duration: 600, yoyo: true, repeat: -1 })
+    // Enter 키로 재시작
+    this.input.keyboard.once('keydown-ENTER', () => this.onGameOver?.())
   }
 
   // 전투 종료 후 선택지 — "맵으로 복귀"는 노드 기반 전투(MOD-6)일 때만 보여준다(자유 전투 호환).
@@ -1392,6 +1688,10 @@ export default class BattleScene extends Phaser.Scene {
     })
 
     this.battleEndLayer = [dim, titleText, bodyText, ...buttons]
+    // Enter 키로 첫 번째 버튼(맵 복귀 등) 실행
+    if (actions.length > 0) {
+      this.input.keyboard.once('keydown-ENTER', () => actions[0].onClick())
+    }
   }
 
   // ----- AP/TP -----
