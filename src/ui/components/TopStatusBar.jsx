@@ -14,7 +14,7 @@ const NAV_ITEMS = [
 
 // Endless Space 2 스타일 상단 한 줄 상태바 — 자원·턴·함대 생존 수를 항상 노출하고,
 // 기존 좌측 내비게이션은 햄버거 토글로 펼치는 드롭다운에 압축한다.
-export default function TopStatusBar({ view, onNavigate, onManagePlanet, inBattle }) {
+export default function TopStatusBar({ view, onNavigate, onManagePlanet, inBattle, onOpenDevRoom }) {
   const [navOpen, setNavOpen] = useState(false)
   const conqueredNodeIds = useProgressStore((s) => s.conqueredNodeIds)
   const roster = useFleetStore((s) => s.roster)
@@ -43,6 +43,16 @@ export default function TopStatusBar({ view, onNavigate, onManagePlanet, inBattl
       </div>
 
       <ResourceHud compact />
+
+      {onOpenDevRoom && (
+        <button
+          className="app-topbar-devbtn"
+          onClick={onOpenDevRoom}
+          title="개발자 설정 관제실 (F9)"
+        >
+          ⚙ 관제실
+        </button>
+      )}
 
       {navOpen && (
         <>

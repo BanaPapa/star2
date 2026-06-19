@@ -12,6 +12,7 @@ import PlanetManagementScreen from './ui/screens/PlanetManagementScreen'
 import EndingScreen from './ui/screens/EndingScreen'
 import SaveScreen from './ui/screens/SaveScreen'
 import TopStatusBar from './ui/components/TopStatusBar'
+import SystemControlRoom from './ui/devroom/SystemControlRoom'
 import './App.css'
 
 const BGM_FOR_VIEW = {
@@ -35,6 +36,7 @@ function App() {
   const [prevView, setPrevView] = useState(null)
   const [activeNodeId, setActiveNodeId] = useState(null)
   const [planetNodeId, setPlanetNodeId] = useState(null)
+  const [devRoomOpen, setDevRoomOpen] = useState(false)
 
   function navigate(next) {
     setPrevView(view)
@@ -42,6 +44,22 @@ function App() {
   }
 
   useEffect(() => { init() }, [init])
+
+  // 개발자 관제실 전역 단축키: F9는 항상 토글, 백틱(`)은 입력 중이 아닐 때만 토글, Esc는 닫기.
+  useEffect(() => {
+    function onKey(e) {
+      const tag = e.target?.tagName
+      const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
+      if (e.key === 'F9' || (e.key === '`' && !typing)) {
+        e.preventDefault()
+        setDevRoomOpen((o) => !o)
+      } else if (e.key === 'Escape') {
+        setDevRoomOpen(false)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   useEffect(() => {
     soundManager.setVolume(soundVolume)
@@ -110,6 +128,7 @@ function App() {
             onNavigate={(next) => !inBattle && navigate(next)}
             onManagePlanet={() => !inBattle && handleManagePlanet(null)}
             inBattle={inBattle}
+            onOpenDevRoom={() => setDevRoomOpen(true)}
           />
 
           <main className="app-content">
@@ -143,6 +162,11 @@ function App() {
             )}
           </main>
         </div>
+      )}
+
+      {/* 개발자 설정 관제실 — F9 / 백틱(`) / ⚙ 버튼으로 토글. 어느 화면에서나 접근 가능. */}
+      {devRoomOpen && (
+        <SystemControlRoom onClose={() => setDevRoomOpen(false)} inBattle={inBattle} />
       )}
     </>
   )

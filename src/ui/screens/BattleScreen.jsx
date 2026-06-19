@@ -6,8 +6,10 @@ import { useProgressStore } from '../../state/useProgressStore'
 import { useBattleStore }   from '../../state/useBattleStore'
 import { useFleetStore }    from '../../state/useFleetStore'
 import { useResourceStore } from '../../state/useResourceStore'
-import { useBuildingStore } from '../../state/useBuildingStore'
+import { useResearchStore } from '../../state/useResearchStore'
 import { TERRAIN_TYPES }    from '../../game/systems/terrain'
+import { getBattlefieldSizeByTier, getPlayerWeaponTier } from '../../core/combatMath'
+import { useGameConfigStore } from '../../state/useGameConfigStore'
 
 // ── 모듈 레벨 헬퍼 ──
 const tpColor = (tp) => tp >= 100 ? '#ffd166' : tp >= 50 ? '#4fb8ff' : '#6b7aa8'
@@ -16,6 +18,7 @@ const tpColor = (tp) => tp >= 100 ? '#ffd166' : tp >= 50 ? '#4fb8ff' : '#6b7aa8'
 function UnitBottomCard({ u }) {
   const [hov, setHov] = useState(false)
   const hpPct = u.maxHp > 0 ? Math.max(0, (u.hp / u.maxHp) * 100) : 0
+  const shPct = u.maxShield > 0 ? Math.max(0, (u.shield / u.maxShield) * 100) : 0
   const apPct = u.maxAp > 0 ? Math.max(0, (u.ap / u.maxAp) * 100) : 0
   const tpPct = Math.min(100, Math.round(u.tp))
   const isAlly = u.side === 'ally'
@@ -39,6 +42,15 @@ function UnitBottomCard({ u }) {
               </div>
               <span className="btm-popup-bar-val">{u.hp}/{u.maxHp}</span>
             </div>
+            {u.maxShield > 0 && (
+              <div className="btm-popup-bar-row">
+                <span className="btm-popup-bar-lbl">SH</span>
+                <div className="btm-popup-bar-track">
+                  <div className="btm-popup-bar-fill" style={{ width: shPct + '%', background: '#3ad6c4' }} />
+                </div>
+                <span className="btm-popup-bar-val">{u.shield}/{u.maxShield}</span>
+              </div>
+            )}
             <div className="btm-popup-bar-row">
               <span className="btm-popup-bar-lbl">AP</span>
               <div className="btm-popup-bar-track">
@@ -105,10 +117,11 @@ export default function BattleScreen({ nodeId, onExit, onEnding, onGameOver }) {
   const roster     = useFleetStore((s) => s.roster)
   const wallet     = useResourceStore((s) => s.wallet)
 
-  // 연구소 레벨 → 전투 그리드 크기: Lv1-2=10×8, Lv3=16×13, Lv4+=20×16
-  const labLevel   = useBuildingStore((s) => s.getLevel('s0', 'bld_research_lab'))
-  const gridCols   = labLevel >= 4 ? 20 : labLevel >= 3 ? 16 : 10
-  const gridRows   = labLevel >= 4 ? 16 : labLevel >= 3 ? 13 : 8
+  // 연구 단계(해금한 최고 무기 티어) → 전장 크기 (요청서 2장). 관제실 config에서 조정 가능.
+  const unlockedResearch = useResearchStore((s) => s.unlockedIds)
+  const gameConfig = useGameConfigStore((s) => s.config)
+  const weaponTier = getPlayerWeaponTier(unlockedResearch, gameConfig)
+  const { width: gridCols, height: gridRows } = getBattlefieldSizeByTier(weaponTier, gameConfig)
 
   // ── 전투 스토어 ──
   const units       = useBattleStore((s) => s.units)

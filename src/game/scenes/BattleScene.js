@@ -1,6 +1,8 @@
 import Phaser from 'phaser'
 import { computeMovementRange, findPath, manhattanDistance } from '../../core/grid'
-import { resolveAttack } from '../../core/combat'
+import { resolveAttack, lookupCounterMultiplier } from '../../core/combat'
+import { calculateHitChance, calculateDamage, resolveDamagePipeline, getDamageState } from '../../core/combatMath'
+import { getGameConfig } from '../../state/useGameConfigStore'
 import { pickTarget, inAttackRange, planApproach } from '../../core/ai'
 import { collectLineTargets } from '../../core/skills'
 import { getEffectiveShip, applyEquipment, getUnitFinishers, xpRewardForVictory, canPromote } from '../../core/growth'
@@ -113,6 +115,7 @@ const HP_BAR_HEIGHT = 4
 const HP_BAR_BG_COLOR = 0x0d1520
 const AP_BAR_COLOR = 0x4a90d9
 const AP_BAR_BG_COLOR = 0x0d1520
+const SHIELD_BAR_COLOR = 0x3ad6c4 // 실드 바(시안) — HP 바 위에 표시
 
 // Cover block palette (impassable terrain)
 const COVER_TOP    = 0x3a5a7a
@@ -126,6 +129,7 @@ const BRACKET_THICK = 2.5
 const DAMAGE_TEXT_COLOR = '#ffd166'
 const MISS_TEXT_COLOR = '#c8d8ff'
 const HEAL_TEXT_COLOR = '#7dffb0'
+const SHIELD_TEXT_COLOR = '#3ad6c4'
 const FINISHER_READY_COLOR = '#ffd166'
 const FINISHER_WAIT_COLOR = '#5a6a96'
 const TOGGLE_COLOR = '#8fa3d6'
@@ -175,6 +179,7 @@ export default class BattleScene extends Phaser.Scene {
     this.onGameOver = onGameOver ?? null
     this.terrain = buildTerrainLayout(node?.threatLevel ?? 1)
     this.units = []
+    this.allyQueue = []
     this.selected = null
     this.highlighted = new Set()
     this.busy = false // 이동/공격/적 행동 애니메이션 동안 입력 잠금
@@ -375,11 +380,15 @@ export default class BattleScene extends Phaser.Scene {
       const v = state.autoBattle
       if (v === this.autoBattle) return
       this.autoBattle = v
-      if (v && this.phase === 'player' && !this.busy && !this.battleEnded) {
-        this.pendingAbility = null
-        this.clearSelection()
-        this.time.delayedCall(this.actionDelay, () => this.runAllyAutoTurn(0))
-      }
+      if (!v || this.battleEnded) return
+      this.pendingAbility = null
+      this.clearSelection()
+      // busy(애니메이션 중) 여부와 무관하게 일정 딜레이 후 시작 — busy가 먼저 풀리므로 타이밍 안전
+      this.time.delayedCall(Math.max(this.actionDelay, 300), () => {
+        if (this.autoBattle && this.phase === 'player' && !this.battleEnded) {
+          this.runAllyAutoTurn(0)
+        }
+      })
     })
 
     this.cutinManager = new CutinManager(this)
@@ -595,8 +604,21 @@ export default class BattleScene extends Phaser.Scene {
     const hpBarFg = this.add.rectangle(-HP_BAR_WIDTH / 2, barOffY, HP_BAR_WIDTH, HP_BAR_HEIGHT, palette.ring)
       .setOrigin(0, 0.5)
 
-    // AP 바 (HP 바 위) — 파란색
-    const apBarOffY = barOffY - HP_BAR_HEIGHT - 3
+    // Shield 바 (HP 바 위) — 시안. maxShield 0이면 숨김(요청서 18·19장).
+    const config = getGameConfig()
+    const ov = config.overrides?.shipStats?.[baseShip.id] ?? {}
+    const maxShield = ov.maxShield ?? ov.shield ?? ship.maxShield ?? ship.shield ?? 0
+    const armorVal = ov.armor ?? ship.armor ?? ship.def ?? 0
+    const maxArmorDur = ov.armorDurability ?? ship.armorDurability ?? ship.maxArmorDurability ?? 0
+
+    const shieldBarOffY = barOffY - HP_BAR_HEIGHT - 1
+    const shieldBarBg = this.add.rectangle(0, shieldBarOffY, HP_BAR_WIDTH, HP_BAR_HEIGHT - 1, HP_BAR_BG_COLOR)
+      .setOrigin(0.5, 0.5).setAlpha(maxShield > 0 ? 1 : 0)
+    const shieldBarFg = this.add.rectangle(-HP_BAR_WIDTH / 2, shieldBarOffY, HP_BAR_WIDTH, HP_BAR_HEIGHT - 1, SHIELD_BAR_COLOR)
+      .setOrigin(0, 0.5).setAlpha(maxShield > 0 ? 1 : 0)
+
+    // AP 바 (Shield 바 위) — 파란색
+    const apBarOffY = shieldBarOffY - HP_BAR_HEIGHT - 2
     const apBarBg = this.add.rectangle(0, apBarOffY, HP_BAR_WIDTH, HP_BAR_HEIGHT - 1, AP_BAR_BG_COLOR)
       .setOrigin(0.5, 0.5)
     const apBarFg = this.add.rectangle(-HP_BAR_WIDTH / 2, apBarOffY, HP_BAR_WIDTH, HP_BAR_HEIGHT - 1, AP_BAR_COLOR)
@@ -619,7 +641,7 @@ export default class BattleScene extends Phaser.Scene {
       color: STATUS_LABEL_COLOR,
     }).setOrigin(0.5, 0).setAlpha(0)
 
-    const container = this.add.container(px, py, [ring, hpBarBg, hpBarFg, apBarBg, apBarFg, glyph, label, statusLabel])
+    const container = this.add.container(px, py, [ring, hpBarBg, hpBarFg, shieldBarBg, shieldBarFg, apBarBg, apBarFg, glyph, label, statusLabel])
     container.setSize(radius * 2, radius * 2)
     container.setDepth(4)  // 커버 블록(depth 2) 위에 표시
     container.setInteractive({ useHandCursor: true })
@@ -637,13 +659,20 @@ export default class BattleScene extends Phaser.Scene {
       maxAp: ship.ap,
       tp: 0,
       tpPerTurn: ship.tpPerTurn,
-      shield: 0,
+      // Shield / Armor (요청서 18장). 전투 시작 시 최대치로 — 전투 간 이월은 다음 단계.
+      shield: maxShield,
+      maxShield,
+      armor: armorVal,
+      armorDurability: maxArmorDur,
+      maxArmorDurability: maxArmorDur,
+      defenseReduction: 0, // 방어 태세 피해 감소율 — 다음 단계에서 행동으로 설정
       apDebuff: 0,
       ace,
       finishers,
       container,
       ring,
       hpBarFg,
+      shieldBarFg,
       apBarFg,
       label,
       statusLabel,
@@ -1226,48 +1255,80 @@ export default class BattleScene extends Phaser.Scene {
     const isCrit = Math.random() < 0.15
     const critMult = isCrit ? 1.8 : 1.0
 
-    const result = resolveAttack(
+    // ── 명중/피해 계산을 데이터 주도 combatMath로 처리 (요청서 14·15·18·21장) ──
+    const config = getGameConfig()
+
+    // 손상 단계 보정 — 공격자 명중, 방어자 회피 (요청서 21장)
+    const atkState = getDamageState(attacker.maxHp > 0 ? attacker.hp / attacker.maxHp : 1, config)
+    const defState = getDamageState(defender.maxHp > 0 ? defender.hp / defender.maxHp : 1, config)
+
+    const hitRes = calculateHitChance(
+      { acc: attacker.ship.acc },
+      { eva: defender.ship.eva },
+      null,
       {
-        attacker: { id: attacker.ship.id, acc: attacker.ship.acc, atk: attacker.ship.atk },
-        defender: { id: defender.ship.id, eva: defender.ship.eva, def: defender.ship.def, hp: defender.hp },
-        terrainEvaMod: defTerrain.evaMod,
         terrainAccMod: defTerrain.accMod,
-        boosterActive: false,
-        damageMultiplier: flankMult * critMult,
+        damageStateAccMod: atkState.accMod,
+        evasionContext: { terrainEvaMod: defTerrain.evaMod, damageStateEvaMod: defState.evaMod },
       },
-      this.combatRules,
+      config,
     )
+    const chancePct = hitRes.hitChance
+    const hit = Math.random() * 100 < chancePct
 
     this.clearSelection()
     this.busy = true
     this.spendAp(attacker, 1)
-    const chancePct = Math.round(result.hitChance)
 
     // 타겟팅 라인 — 공격 방향과 명중/회피 색으로 짧게 번쩍임
-    this.flashTargetingLine(attacker, defender, result.hit ? 0x44ff88 : 0xff6655)
+    this.flashTargetingLine(attacker, defender, hit ? 0x44ff88 : 0xff6655)
 
     const finish = () => {
       this.busy = false
       onComplete?.()
     }
 
-    if (!result.hit) {
+    if (!hit) {
       this._dodgeUnit(defender, attacker)
       this.showFloatingText(defender, '회피!', MISS_TEXT_COLOR, finish)
       this.refreshHud(`${attacker.ship.name} → ${defender.ship.name} : 빗나감! (명중률 ${chancePct}%)`)
       return
     }
 
-    defender.hp = Math.max(0, defender.hp - result.damage)
+    // 피해량 = 상성 배율 × 측면/크리티컬 → Shield → Armor → HP 파이프라인
+    const counter = lookupCounterMultiplier(this.combatRules.counterMultiplier, attacker.ship.id, defender.ship.id)
+    const finalDamage = calculateDamage(
+      { atk: attacker.ship.atk }, null,
+      { counterMultiplier: counter, damageMultiplier: flankMult * critMult },
+      config,
+    )
+    const shieldBefore = defender.shield
+    const pipe = resolveDamagePipeline(
+      {
+        defender: { shield: defender.shield, armor: defender.armor, armorDurability: defender.armorDurability, hp: defender.hp },
+        finalDamage,
+        shieldPierce: 0,
+        defenseReduction: defender.defenseReduction ?? 0,
+      },
+      config,
+    )
+    defender.shield = pipe.shieldAfter
+    defender.armorDurability = pipe.armorDurabilityAfter
+    defender.hp = Math.max(0, pipe.hpAfter)
     this.updateHpBar(defender)
+    this.updateShieldBar(defender)
 
-    const hitColor  = isCrit ? '#ff6b35' : DAMAGE_TEXT_COLOR
-    const hitLabel  = isCrit ? `💥${result.damage}!` : `-${result.damage}`
+    const shieldAbsorbed = Math.max(0, Math.round(shieldBefore - pipe.shieldAfter))
+    const lethal = pipe.destroyed
+    const toShield = pipe.hpDamage <= 0 && shieldAbsorbed > 0
+
+    const hitColor  = toShield ? SHIELD_TEXT_COLOR : (isCrit ? '#ff6b35' : DAMAGE_TEXT_COLOR)
+    const hitLabel  = toShield ? `🛡-${shieldAbsorbed}` : (isCrit ? `💥${pipe.hpDamage}!` : `-${pipe.hpDamage}`)
     const bonusTxt  = [isFlank ? '측면' : null, isCrit ? '크리티컬!' : null].filter(Boolean).join(' · ')
     const bonusPart = bonusTxt ? ` [${bonusTxt}]` : ''
 
     this.showFloatingText(defender, hitLabel, hitColor, () => {
-      if (result.lethal) {
+      if (lethal) {
         this.destroyUnit(defender)
         // 킬 시 AP +1 반환 (아군만) — 추격·연속 제거의 손맛
         if (attacker.side === 'ally' && attacker.ap < attacker.maxAp) {
@@ -1282,13 +1343,15 @@ export default class BattleScene extends Phaser.Scene {
       finish()
     })
 
-    if (result.lethal) {
+    const dmgDesc = toShield ? `실드 ${shieldAbsorbed} 흡수` : `${pipe.hpDamage} 데미지`
+    if (lethal) {
       this.refreshHud(
-        `${attacker.ship.name} → ${defender.ship.name} : 명중! ${result.damage} 데미지로 격파!${bonusPart} (명중률 ${chancePct}%)`,
+        `${attacker.ship.name} → ${defender.ship.name} : 명중! ${dmgDesc}로 격파!${bonusPart} (명중률 ${chancePct}%)`,
       )
     } else {
+      const shieldPart = defender.maxShield > 0 ? ` · 🛡${defender.shield}/${defender.maxShield}` : ''
       this.refreshHud(
-        `${attacker.ship.name} → ${defender.ship.name} : 명중! ${result.damage} 데미지${bonusPart} (남은 HP ${defender.hp}/${defender.maxHp}, 명중률 ${chancePct}%)`,
+        `${attacker.ship.name} → ${defender.ship.name} : 명중! ${dmgDesc}${bonusPart} (HP ${defender.hp}/${defender.maxHp}${shieldPart}, 명중률 ${chancePct}%)`,
       )
     }
   }
@@ -1416,6 +1479,12 @@ export default class BattleScene extends Phaser.Scene {
     unit.hpBarFg.setSize(HP_BAR_WIDTH * ratio, HP_BAR_HEIGHT)
   }
 
+  updateShieldBar(unit) {
+    if (!unit.shieldBarFg || !unit.maxShield) return
+    const ratio = Math.max(0, unit.shield) / unit.maxShield
+    unit.shieldBarFg.setSize(HP_BAR_WIDTH * ratio, HP_BAR_HEIGHT - 1)
+  }
+
   updateApBar(unit) {
     if (!unit.apBarFg) return
     const ratio = unit.maxAp > 0 ? Math.max(0, unit.ap) / unit.maxAp : 0
@@ -1426,7 +1495,11 @@ export default class BattleScene extends Phaser.Scene {
     unit.container.destroy()
     this.units = this.units.filter((u) => u !== unit)
     if (this.selected === unit) this.selected = null
-    if (unit.side === 'enemy') this.defeatedEnemyShips.push(unit.baseShip)
+    if (unit.side === 'enemy') {
+      this.defeatedEnemyShips.push(unit.baseShip)
+    } else if (unit.side === 'ally' && unit.instanceId) {
+      useFleetStore.getState().removeFromRoster(unit.instanceId)
+    }
     this.checkBattleEnd()
   }
 
@@ -1712,12 +1785,14 @@ export default class BattleScene extends Phaser.Scene {
   // 턴 시작 시 AP를 최대치로 채운다. area_emp의 effect.apDebuff(예: "다음 턴 행동 -1AP", duration:1)는
   // 누적된 디버프만큼 이번 한 턴만 maxAp를 줄이고 즉시 소멸시킨다 — 그 외에는 ship.ap 그대로 사용.
   refillAp(unit) {
+    // 손상 단계 AP 페널티 (요청서 21장: 중파 -1, 대파 -2)
+    const dmgState = getDamageState(unit.maxHp > 0 ? unit.hp / unit.maxHp : 1, getGameConfig())
+    let base = unit.ship.ap
     if (unit.apDebuff > 0) {
-      unit.maxAp = Math.max(0, unit.ship.ap - unit.apDebuff)
+      base = unit.ship.ap - unit.apDebuff
       unit.apDebuff = 0
-    } else {
-      unit.maxAp = unit.ship.ap
     }
+    unit.maxAp = Math.max(0, base + (dmgState.apMod ?? 0))
     unit.ap = unit.maxAp
     unit.aoeFiredThisTurn = false // MOD-11: 보스 2페이즈 광역 공격 플래그 초기화
     this.refreshUnitStatusLabel(unit)
@@ -1747,6 +1822,9 @@ export default class BattleScene extends Phaser.Scene {
         sprite:     getEmojiFallback(u.ship.sprite),
         hp:         u.hp,
         maxHp:      u.maxHp,
+        shield:     u.shield,
+        maxShield:  u.maxShield,
+        armor:      u.armor,
         ap:         u.ap,
         maxAp:      u.maxAp,
         tp:         u.tp,
@@ -1858,7 +1936,7 @@ export default class BattleScene extends Phaser.Scene {
         return
       }
       const allies = this.units.filter((u) => u.side === 'ally')
-      const target = pickTarget(unit.ship.id, allies, this.combatRules.counterMultiplier)
+      const target = pickTarget(unit, allies, this.combatRules.counterMultiplier)
       if (!target) {
         onDone()
         return
@@ -1934,7 +2012,7 @@ export default class BattleScene extends Phaser.Scene {
         return
       }
       const enemies = this.units.filter((u) => u.side === 'enemy')
-      const target = pickTarget(unit.ship.id, enemies, this.combatRules.counterMultiplier)
+      const target = pickTarget(unit, enemies, this.combatRules.counterMultiplier)
       if (!target) {
         onDone()
         return
