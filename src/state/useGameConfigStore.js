@@ -79,12 +79,7 @@ export const useGameConfigStore = create((set, get) => ({
   // 경로 기반 불변 업데이트 (예: setPath('combat.accuracy.maxHitChance', 90)).
   setPath: (path, value) => set((s) => ({ config: setIn(s.config, path, value), dirty: true })),
 
-  // 섹션 통째 교체 (예: ShipStats/WeaponStats override 객체).
-  setSection: (key, value) => set((s) => ({ config: { ...s.config, [key]: value }, dirty: true })),
-
   setPriorityRules: (rules) => set((s) => ({ config: { ...s.config, priorityRules: rules }, dirty: true })),
-
-  setPendingScope: (scope) => set({ pendingScope: scope }),
 
   // localStorage에 영구 저장.
   save: () => { persist(get().config); set({ dirty: false }) },
@@ -96,12 +91,6 @@ export const useGameConfigStore = create((set, get) => ({
     persist(fresh)
     set({ config: fresh, dirty: false })
   },
-
-  // 특정 최상위 섹션만 기본값으로 초기화(combat 하위 키 또는 overrides 등).
-  resetSection: (key) => set((s) => ({
-    config: { ...s.config, [key]: deepClone(DEFAULT_GAME_CONFIG[key]) },
-    dirty: true,
-  })),
 
   // 현재 config를 JSON 파일로 내보내기(브라우저 다운로드).
   exportJson: () => {

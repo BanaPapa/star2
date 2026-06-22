@@ -42,14 +42,6 @@ export function obstacleEmoji(key) {
   return OBSTACLE_EMOJI[key] ?? '⬢'
 }
 
-// 그리드 프리셋 (rows/cols)
-export const GRID_PRESETS = [
-  { label: '14×12', cols: 14, rows: 12 },
-  { label: '16×12', cols: 16, rows: 12 },
-  { label: '20×16', cols: 20, rows: 16 },
-  { label: '24×18', cols: 24, rows: 18 },
-]
-
 const cellKey = (x, y) => `${x},${y}`
 
 // ── 기본 corner 자동 생성 (이미지 중앙에 아이소 다이아몬드) ──────────────
@@ -230,16 +222,6 @@ export function screenToGrid(map, px, py) {
   return { gx, gy, tileX: Math.floor(gx), tileY: Math.floor(gy) }
 }
 
-// 타일 (tileX,tileY) 의 4꼭짓점 폴리곤(이미지 좌표) — 렌더용.
-export function getTilePolygon(map, tileX, tileY) {
-  return [
-    gridToScreen(map, tileX, tileY),
-    gridToScreen(map, tileX + 1, tileY),
-    gridToScreen(map, tileX + 1, tileY + 1),
-    gridToScreen(map, tileX, tileY + 1),
-  ]
-}
-
 export function getTileCenter(map, tileX, tileY) {
   return gridToScreen(map, tileX + 0.5, tileY + 0.5)
 }
@@ -270,10 +252,6 @@ export function isTileBlocked(map, x, y) {
 
 export function isTileVoid(map, x, y) {
   return getTileType(map, x, y) === 'void'
-}
-
-export function isTileSpawnable(map, x, y) {
-  return getTileTypeDef(getTileType(map, x, y)).spawnable && !isTileBlocked(map, x, y)
 }
 
 // 불변: 타일 타입 설정한 새 tiles 객체 반환(default와 같으면 override 제거).

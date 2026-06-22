@@ -1,7 +1,7 @@
 // 전투맵 저장소 — Battle Map Editor가 만든 mapDefinition을 localStorage("7star_battle_maps")에 보관.
 // 전투(BattleScreen)는 activeMapId로 현재 사용할 맵을 읽는다.
 import { create } from 'zustand'
-import { createMapDefinition, cloneMap, normalizeForSave } from '../core/battleMap'
+import { normalizeForSave } from '../core/battleMap'
 import { BUILTIN_MAPS } from '../data/builtinMaps'
 
 const MAPS_KEY   = '7star_battle_maps'
@@ -87,10 +87,6 @@ function loadNodeMaps() {
   return {}
 }
 
-function persistNodeMaps(nodeMaps) {
-  try { localStorage.setItem(NODEMAP_KEY, JSON.stringify(nodeMaps)) } catch { /* 무시 */ }
-}
-
 function loadCategoryMaps() {
   const base = emptyCategoryMaps()
   try {
@@ -124,46 +120,6 @@ export const useMapStore = create((set, get) => ({
     set({ maps })
     return normalized
   },
-
-  createMap: (opts) => {
-    const map = createMapDefinition(opts)
-    const maps = { ...get().maps, [map.id]: map }
-    persistMaps(maps)
-    set({ maps })
-    return map
-  },
-
-  duplicateMap: (id) => {
-    const src = get().maps[id]
-    if (!src) return null
-    const copy = cloneMap(src)
-    copy.id = `${src.id}_copy_${Date.now().toString(36)}`
-    copy.name = `${src.name} (복사본)`
-    const maps = { ...get().maps, [copy.id]: copy }
-    persistMaps(maps)
-    set({ maps })
-    return copy
-  },
-
-  deleteMap: (id) => {
-    const maps = { ...get().maps }
-    delete maps[id]
-    persistMaps(maps)
-    const activeMapId = get().activeMapId === id ? null : get().activeMapId
-    persistActive(activeMapId)
-    // 이 맵을 가리키던 노드 할당도 해제
-    const nodeMaps = { ...get().nodeMaps }
-    let changed = false
-    for (const [nid, mid] of Object.entries(nodeMaps)) {
-      if (mid === id) { delete nodeMaps[nid]; changed = true }
-    }
-    if (changed) persistNodeMaps(nodeMaps)
-    set({ maps, activeMapId, nodeMaps })
-  },
-
-  getMap: (id) => get().maps[id] ?? null,
-
-  setActiveMap: (id) => { persistActive(id); set({ activeMapId: id }) },
 
   // 맵 적용(배정) — 맵을 모든 유형에서 제거 후 지정 유형에 추가(type=null이면 미배정으로). 한 맵=한 유형(자동 이동).
   assignMapToType: (mapId, type) => {
@@ -211,42 +167,12 @@ export const useMapStore = create((set, get) => ({
     set({ maps, categoryMaps: cm })
   },
 
-  // 노드별 맵 할당(빈 값이면 해제).
-  setNodeMap: (nodeId, mapId) => {
-    const nodeMaps = { ...get().nodeMaps }
-    if (mapId) nodeMaps[nodeId] = mapId
-    else delete nodeMaps[nodeId]
-    persistNodeMaps(nodeMaps)
-    set({ nodeMaps })
-  },
-
-  // JSON 가져오기 — 단일 맵 또는 { maps:{...} } 묶음 모두 허용.
-  importMaps: (obj) => {
-    const incoming = obj?.maps && typeof obj.maps === 'object'
-      ? obj.maps
-      : (obj?.id ? { [obj.id]: obj } : null)
-    if (!incoming) return { ok: false, error: '유효한 맵 JSON이 아닙니다 (id 또는 maps 필요).' }
-    const maps = { ...get().maps }
-    let count = 0
-    for (const [id, m] of Object.entries(incoming)) {
-      if (m && m.grid && m.tiles) { maps[id] = m; count += 1 }
-    }
-    persistMaps(maps)
-    set({ maps })
-    return { ok: true, count }
-  },
 }))
 
 // 이미지 basename의 유효 유형: 사용자 오버라이드 > 기본 분류 > null(기타).
 export const mapTypeOf = (basename, overrides) => {
   const o = overrides ?? useMapStore.getState().mapCategories
   return o[basename] ?? PREDEFINED_MAP_TYPES[basename] ?? null
-}
-
-// 비-React 접근 헬퍼 (BattleScreen 등).
-export const getActiveMap = () => {
-  const { activeMapId, maps } = useMapStore.getState()
-  return activeMapId ? (maps[activeMapId] ?? null) : null
 }
 
 // 전투 종류(planet_normal 등)에 맞는 맵 유형의 배정 맵 중 랜덤 1개. 배정 없으면 null(→ 호출측 폴백).
